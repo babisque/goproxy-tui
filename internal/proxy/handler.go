@@ -6,7 +6,15 @@ import (
 	"net/http"
 )
 
-type ProxyHandler struct{}
+type RequestLog struct {
+	Method string
+	URL    string
+	Status int
+}
+
+type ProxyHandler struct {
+	LogChannel chan RequestLog
+}
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
@@ -14,10 +22,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {
-		fmt.Println("Error forwarding request:", err)
 		http.Error(w, "Error forwarding request", http.StatusBadGateway)
 		return
 	}
+	defer resp.Body.Close()
 
 	for key, values := range resp.Header {
 		for _, value := range values {
@@ -27,5 +35,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
-	defer resp.Body.Close()
+
+	ph.LogChannel <- RequestLog{
+		Method: r.Method,
+		URL:    r.Host + r.URL.Path,
+		Status: resp.StatusCode,
+	}
 }

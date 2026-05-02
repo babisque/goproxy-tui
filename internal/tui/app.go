@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"github.com/babisque/goproxy-tui/internal/proxy"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -16,12 +17,15 @@ var (
 )
 
 type App struct {
-	width  int
-	height int
+	width      int
+	height     int
+	logChannel chan proxy.RequestLog
 }
 
-func NewApp() App {
-	return App{}
+func NewApp(ch chan proxy.RequestLog) App {
+	return App{
+		logChannel: ch,
+	}
 }
 
 func (a App) Init() tea.Cmd {
