@@ -21,12 +21,24 @@ type ProxyHandler struct {
 	LogChannel     chan RequestLog
 	IgnoredDomains *DomainList
 	BlockedDomains *DomainList
+	InterceptRules []InterceptRule
 	configFile     string
 }
 
 type DomainList struct {
 	mu      sync.RWMutex
 	domains map[string]bool
+}
+
+type ConfigData struct {
+	Blocked        []string        `json:"blocked_domains"`
+	Ignored        []string        `json:"ignored_domains"`
+	InterceptRules []InterceptRule `json:"intercept_rules"`
+}
+
+type InterceptRule struct {
+	Host    string
+	Headers map[string]string
 }
 
 func (dl *DomainList) Add(domain string) {
@@ -61,16 +73,12 @@ func (dl *DomainList) ToSlice() []string {
 	return list
 }
 
-type ConfigData struct {
-	Blocked []string `json:"blocked_domains"`
-	Ignored []string `json:"ignored_domains"`
-}
-
 func NewProxyHandler(ch chan RequestLog, configPath string) *ProxyHandler {
 	ph := &ProxyHandler{
 		LogChannel:     ch,
 		IgnoredDomains: NewDomainList(),
 		BlockedDomains: NewDomainList(),
+		InterceptRules: []InterceptRule{},
 		configFile:     configPath,
 	}
 	ph.LoadConfig()
@@ -94,12 +102,16 @@ func (ph *ProxyHandler) LoadConfig() {
 	for _, d := range config.Ignored {
 		ph.IgnoredDomains.Add(d)
 	}
+	for _, r := range config.InterceptRules {
+		ph.InterceptRules = append(ph.InterceptRules, r)
+	}
 }
 
 func (ph *ProxyHandler) SaveConfig() {
 	config := ConfigData{
-		Blocked: ph.BlockedDomains.ToSlice(),
-		Ignored: ph.IgnoredDomains.ToSlice(),
+		Blocked:        ph.BlockedDomains.ToSlice(),
+		Ignored:        ph.IgnoredDomains.ToSlice(),
+		InterceptRules: ph.InterceptRules,
 	}
 
 	data, _ := json.MarshalIndent(config, "", "  ")
@@ -132,6 +144,10 @@ func (ph *ProxyHandler) RemoveIgnored(domain string) {
 	ph.SaveConfig()
 }
 
+func (ir *InterceptRule) getInterceptRuleHost() string {
+	return ir.Host
+}
+
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
 
@@ -143,6 +159,14 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Status: http.StatusForbidden, Body: "Blocked by proxy rules",
 		}
 		return
+	}
+
+	for _, rule := range ph.InterceptRules {
+		if r.Host == rule.Host {
+			for key, value := range rule.Headers {
+				r.Header.Set(key, value)
+			}
+		}
 	}
 
 	resp, err := http.DefaultTransport.RoundTrip(r)
@@ -175,4 +199,22 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Status: resp.StatusCode, Headers: resp.Header.Clone(),
 		Body: string(bodyBytes),
 	}
+}
+
+func (ph *ProxyHandler) AddIntercept(host, key, val string) {
+	found := false
+	for i, rule := range ph.InterceptRules {
+		if rule.Host == host {
+			ph.InterceptRules[i].Headers[key] = val
+			found = true
+			break
+		}
+	}
+	if !found {
+		ph.InterceptRules = append(ph.InterceptRules, InterceptRule{
+			Host:    host,
+			Headers: map[string]string{key: val},
+		})
+	}
+	ph.SaveConfig()
 }

@@ -5,5 +5,15 @@
   "ignored_domains": [
     "google.com",
     "google.com.br"
+  ],
+  "intercept_rules": [
+    {
+      "Host": "httpbin.org",
+      "Headers": {
+        "Authorization": "Bearer MeuTokenSecreto",
+        "X-Go-Proxy": "Activated",
+        "X-My-Header": "Hello"
+      }
+    }
   ]
 }

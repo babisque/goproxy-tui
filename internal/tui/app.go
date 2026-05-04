@@ -79,18 +79,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case logMsg:
 		a.requests = append(a.requests, proxy.RequestLog(msg))
-		if len(a.FilteredRequests()) == 1 {
-			a.detailsView.SetContent(buildDetails(a.FilteredRequests()[a.cursor]))
+		filtered := a.FilteredRequests()
+		if len(filtered) == 1 {
+			a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
 		}
 		return a, waitForLog(a.logChannel)
 
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-
 		leftWidth := (a.width / 100) * 30
 		rightWidth := a.width - leftWidth - 6
-
 		a.detailsView.Width = rightWidth - 4
 		a.detailsView.Height = a.height - 12
 
@@ -98,24 +97,31 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.inputMode {
 			switch msg.String() {
 			case "enter":
-				domain := a.input.Value()
-				if domain != "" {
+				val := a.input.Value()
+				if val != "" {
 					switch a.inputTarget {
 					case "block":
-						a.proxy.AddBlocked(domain)
+						a.proxy.AddBlocked(val)
 					case "ignore":
-						a.proxy.AddIgnored(domain)
+						a.proxy.AddIgnored(val)
 					case "remove":
-						a.proxy.RemoveBlocked(domain)
-						a.proxy.RemoveIgnored(domain)
+						a.proxy.RemoveBlocked(val)
+						a.proxy.RemoveIgnored(val)
 					case "filter":
-						a.filterQuery = domain
+						a.filterQuery = val
 						a.cursor = 0
 						filtered := a.FilteredRequests()
 						if len(filtered) > 0 {
-							a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
-						} else {
-							a.detailsView.SetContent("(Empty)")
+							a.detailsView.SetContent(buildDetails(filtered[0]))
+						}
+					case "intercept":
+						parts := strings.Split(val, ",")
+						if len(parts) == 2 {
+							host := strings.TrimSpace(parts[0])
+							kv := strings.Split(parts[1], ":")
+							if len(kv) == 2 {
+								a.proxy.AddIntercept(host, strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+							}
 						}
 					}
 				}
@@ -127,7 +133,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.inputMode = false
 				return a, nil
 			}
-
 			var cmd tea.Cmd
 			a.input, cmd = a.input.Update(msg)
 			return a, cmd
@@ -136,6 +141,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return a, tea.Quit
+		case "esc":
+			a.filterQuery = ""
+			a.cursor = 0
+			filtered := a.FilteredRequests()
+			if len(filtered) > 0 {
+				a.detailsView.SetContent(buildDetails(filtered[0]))
+			}
 		case "b":
 			a.inputMode = true
 			a.inputTarget = "block"
@@ -146,35 +158,39 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.inputTarget = "ignore"
 			a.input.Placeholder = "Enter domain to ignore..."
 			return a, nil
+		case "n":
+			a.inputMode = true
+			a.inputTarget = "intercept"
+			a.input.Placeholder = "Format: host,header:value"
+			return a, nil
+		case "/":
+			a.inputMode = true
+			a.inputTarget = "filter"
+			a.input.Placeholder = "Filter by URL..."
+			return a, nil
+		case "r":
+			a.inputMode = true
+			a.inputTarget = "remove"
+			a.input.Placeholder = "Domain to remove..."
+			return a, nil
 		case "tab":
 			a.focusLeft = !a.focusLeft
 		case "left", "h":
 			a.focusLeft = true
 		case "right", "l":
 			a.focusLeft = false
-		case "r":
-			a.inputMode = true
-			a.inputTarget = "remove"
-			a.input.Placeholder = "Enter domain to UNBLOCK/UNIGNORE..."
-			return a, nil
-		case "/":
-			a.inputMode = true
-			a.inputTarget = "filter"
-			a.input.Placeholder = "Filter requests by URL..."
-			return a, nil
 		}
 
 		if a.focusLeft {
+			filtered := a.FilteredRequests()
 			switch msg.String() {
 			case "up", "k":
-				filtered := a.FilteredRequests()
 				if a.cursor > 0 {
 					a.cursor--
 					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
 					a.detailsView.GotoTop()
 				}
 			case "down", "j":
-				filtered := a.FilteredRequests()
 				if a.cursor < len(filtered)-1 {
 					a.cursor++
 					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
@@ -212,13 +228,16 @@ func (a App) View() string {
 		boxHeight -= 2
 	}
 
+	filtered := a.FilteredRequests()
 	leftWidth := (a.width / 100) * 30
 	rightWidth := a.width - leftWidth - 6
 
 	var listBuilder strings.Builder
-	listBuilder.WriteString("Requests list\n\n")
-
-	filtered := a.FilteredRequests()
+	title := "Requests list"
+	if a.filterQuery != "" {
+		title = fmt.Sprintf("Requests list (Filter: %s)", a.filterQuery)
+	}
+	listBuilder.WriteString(title + "\n\n")
 
 	if len(filtered) == 0 {
 		listBuilder.WriteString("(Empty)")
@@ -240,142 +259,95 @@ func (a App) View() string {
 		leftStyle = activeBoxStyle.Copy()
 	}
 
-	leftBox := leftStyle.
-		Width(leftWidth).
-		Height(boxHeight).
-		Render(listBuilder.String())
+	leftBox := leftStyle.Width(leftWidth).Height(boxHeight).Render(listBuilder.String())
 
 	rightStyle := inactiveBoxStyle.Copy()
 	if !a.focusLeft && !a.inputMode {
 		rightStyle = activeBoxStyle.Copy()
 	}
 
-	rightBox := rightStyle.
-		Width(rightWidth).
-		Height(boxHeight).
-		Render("Request details\n\n" + a.detailsView.View())
+	rightBox := rightStyle.Width(rightWidth).Height(boxHeight).Render("Request details\n\n" + a.detailsView.View())
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 
 	if a.inputMode {
-		label := "BLOCK DOMAIN:"
+		label := "COMMAND:"
 		switch a.inputTarget {
+		case "block":
+			label = "BLOCK DOMAIN:"
 		case "ignore":
 			label = "IGNORE DOMAIN:"
 		case "filter":
 			label = "SEARCH URL:"
 		case "remove":
 			label = "REMOVE DOMAIN:"
+		case "intercept":
+			label = "INTERCEPT (host,h:v):"
 		}
 
-		inputBox := lipgloss.NewStyle().
-			Foreground(colorWhite).
-			Background(colorAccent).
-			Padding(0, 1).
-			Render(label)
-
-		inputUI := lipgloss.JoinHorizontal(lipgloss.Left, inputBox, " ", a.input.View())
-		ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputUI)
+		inputBox := lipgloss.NewStyle().Foreground(colorWhite).Background(colorAccent).Padding(0, 1).Render(label)
+		ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+lipgloss.JoinHorizontal(lipgloss.Left, inputBox, " ", a.input.View()))
 	}
 
 	keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	descStyle := lipgloss.NewStyle().Foreground(colorGray)
 	sep := descStyle.Render(" • ")
 
-	var helpMenu string
+	helpMenu := ""
 	if a.inputMode {
-		helpMenu = keyStyle.Render("enter") + descStyle.Render(" confirm") + sep +
-			keyStyle.Render("esc") + descStyle.Render(" cancel")
+		helpMenu = keyStyle.Render("enter") + descStyle.Render(" confirm") + sep + keyStyle.Render("esc") + descStyle.Render(" cancel")
 	} else {
 		helpMenu = keyStyle.Render("q") + descStyle.Render(" quit") + sep +
-			keyStyle.Render("tab/h/l") + descStyle.Render(" switch panel") + sep +
+			keyStyle.Render("esc") + descStyle.Render(" clear filter") + sep +
 			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
-			keyStyle.Render("b") + descStyle.Render(" block") + sep +
-			keyStyle.Render("i") + descStyle.Render(" ignore") + sep +
-			keyStyle.Render("r") + descStyle.Render(" remove") + sep +
+			keyStyle.Render("b/i/r") + descStyle.Render(" block/ignore/rem") + sep +
+			keyStyle.Render("n") + descStyle.Render(" intercept") + sep +
 			keyStyle.Render("/") + descStyle.Render(" filter")
 	}
 
-	ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu)
-
-	return lipgloss.NewStyle().Margin(1, 2).Render(ui)
-}
-
-func buildDetails(req proxy.RequestLog) string {
-	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Method: %s\n", req.Method))
-	b.WriteString(fmt.Sprintf("URL: %s\n", req.URL))
-	b.WriteString(fmt.Sprintf("Status: %d\n\n", req.Status))
-	b.WriteString("--- RESPONSE HEADERS ---\n")
-
-	var keys []string
-	for k := range req.Headers {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		values := req.Headers[key]
-		joinedValues := strings.Join(values, ", ")
-		coloredKey := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(key + ":")
-		b.WriteString(fmt.Sprintf("%s %s\n", coloredKey, joinedValues))
-	}
-
-	b.WriteString("\n--- RESPONSE BODY ---\n")
-
-	var prettyJSON bytes.Buffer
-	err := json.Indent(&prettyJSON, []byte(req.Body), "", "  ")
-
-	if err != nil {
-		b.WriteString(req.Body)
-		return b.String()
-	}
-
-	lexer := lexers.Get("json")
-	if lexer == nil {
-		lexer = lexers.Fallback
-	}
-
-	style := styles.Get("solarized-dark")
-	if style == nil {
-		style = styles.Fallback
-	}
-
-	formatter := formatters.Get("terminal256")
-	if formatter == nil {
-		formatter = formatters.Fallback
-	}
-
-	iterator, err := lexer.Tokenise(nil, prettyJSON.String())
-	if err != nil {
-		b.WriteString(prettyJSON.String())
-	} else {
-		err = formatter.Format(&b, style, iterator)
-		if err != nil {
-			b.WriteString(prettyJSON.String())
-		}
-	}
-
-	return b.String()
-}
-
-func waitForLog(ch chan proxy.RequestLog) tea.Cmd {
-	return func() tea.Msg {
-		log := <-ch
-		return logMsg(log)
-	}
+	return lipgloss.NewStyle().Margin(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu))
 }
 
 func (a App) FilteredRequests() []proxy.RequestLog {
 	if a.filterQuery == "" {
 		return a.requests
 	}
-
-	result := []proxy.RequestLog{}
-	for _, req := range a.requests {
-		if strings.Contains(strings.ToLower(req.URL), strings.ToLower(a.filterQuery)) {
-			result = append(result, req)
+	var res []proxy.RequestLog
+	q := strings.ToLower(a.filterQuery)
+	for _, r := range a.requests {
+		if strings.Contains(strings.ToLower(r.URL), q) || strings.Contains(strings.ToLower(r.Method), q) {
+			res = append(res, r)
 		}
 	}
-	return result
+	return res
+}
+
+func buildDetails(req proxy.RequestLog) string {
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("Method: %s\nURL: %s\nStatus: %d\n\n--- HEADERS ---\n", req.Method, req.URL, req.Status))
+	keys := make([]string, 0, len(req.Headers))
+	for k := range req.Headers {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		b.WriteString(lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(k+":") + " " + strings.Join(req.Headers[k], ", ") + "\n")
+	}
+	b.WriteString("\n--- BODY ---\n")
+
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, []byte(req.Body), "", "  "); err == nil {
+		lexer := lexers.Get("json")
+		style := styles.Get("monokai")
+		formatter := formatters.Get("terminal256")
+		iterator, _ := lexer.Tokenise(nil, pretty.String())
+		formatter.Format(&b, style, iterator)
+	} else {
+		b.WriteString(req.Body)
+	}
+	return b.String()
+}
+
+func waitForLog(ch chan proxy.RequestLog) tea.Cmd {
+	return func() tea.Msg { return logMsg(<-ch) }
 }
