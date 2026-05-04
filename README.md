@@ -22,7 +22,7 @@ You can download the ready-to-use binaries for Windows, Linux, and macOS directl
 ### Option 2: Build from Source
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/babisque/goproxy-tui.git](https://github.com/babisque/goproxy-tui.git)
+   git clone https://github.com/babisque/goproxy-tui.git
    cd goproxy-tui
    ```
 2. Build the project:
