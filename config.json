@@ -1,7 +1,5 @@
 {
-  "blocked_domains": [
-    "pudim.com.br"
-  ],
+  "blocked_domains": null,
   "ignored_domains": [
     "google.com",
     "google.com.br"
@@ -14,6 +12,13 @@
         "X-Go-Proxy": "Activated",
         "X-My-Header": "Hello"
       }
+    }
+  ],
+  "response_rules": [
+    {
+      "Host": "pudim.com.br",
+      "OldText": "Pudim",
+      "NewText": "BOLO"
     }
   ]
 }

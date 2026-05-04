@@ -57,7 +57,7 @@ func NewApp(ph *proxy.ProxyHandler) App {
 	ti := textinput.New()
 	ti.Focus()
 	ti.CharLimit = 156
-	ti.Width = 50
+	ti.Width = 60
 
 	return App{
 		logChannel:  ph.LogChannel,
@@ -123,6 +123,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 								a.proxy.AddIntercept(host, strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
 							}
 						}
+					case "modify":
+						parts := strings.Split(val, ",")
+						if len(parts) == 2 {
+							host := strings.TrimSpace(parts[0])
+							textParts := strings.Split(parts[1], ":")
+							if len(textParts) == 2 {
+								a.proxy.AddResponseRule(proxy.ResponseRule{
+									Host:    host,
+									OldText: strings.TrimSpace(textParts[0]),
+									NewText: strings.TrimSpace(textParts[1]),
+								})
+							}
+						}
 					}
 				}
 				a.input.SetValue("")
@@ -151,28 +164,27 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "b":
 			a.inputMode = true
 			a.inputTarget = "block"
-			a.input.Placeholder = "Enter domain to block..."
-			return a, nil
+			a.input.Placeholder = "Domain to block..."
 		case "i":
 			a.inputMode = true
 			a.inputTarget = "ignore"
-			a.input.Placeholder = "Enter domain to ignore..."
-			return a, nil
+			a.input.Placeholder = "Domain to ignore..."
 		case "n":
 			a.inputMode = true
 			a.inputTarget = "intercept"
-			a.input.Placeholder = "Format: host,header:value"
-			return a, nil
+			a.input.Placeholder = "host,header:value"
+		case "m":
+			a.inputMode = true
+			a.inputTarget = "modify"
+			a.input.Placeholder = "host,oldText:newText"
 		case "/":
 			a.inputMode = true
 			a.inputTarget = "filter"
 			a.input.Placeholder = "Filter by URL..."
-			return a, nil
 		case "r":
 			a.inputMode = true
 			a.inputTarget = "remove"
 			a.input.Placeholder = "Domain to remove..."
-			return a, nil
 		case "tab":
 			a.focusLeft = !a.focusLeft
 		case "left", "h":
@@ -201,17 +213,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if !a.inputMode {
-		if !a.focusLeft {
-			var vpCmd tea.Cmd
-			a.detailsView, vpCmd = a.detailsView.Update(msg)
-			cmds = append(cmds, vpCmd)
-		} else {
-			if _, isKey := msg.(tea.KeyMsg); !isKey {
-				var vpCmd tea.Cmd
-				a.detailsView, vpCmd = a.detailsView.Update(msg)
-				cmds = append(cmds, vpCmd)
-			}
-		}
+		var vpCmd tea.Cmd
+		a.detailsView, vpCmd = a.detailsView.Update(msg)
+		cmds = append(cmds, vpCmd)
 	}
 
 	return a, tea.Batch(cmds...)
@@ -258,14 +262,12 @@ func (a App) View() string {
 	if a.focusLeft && !a.inputMode {
 		leftStyle = activeBoxStyle.Copy()
 	}
-
 	leftBox := leftStyle.Width(leftWidth).Height(boxHeight).Render(listBuilder.String())
 
 	rightStyle := inactiveBoxStyle.Copy()
 	if !a.focusLeft && !a.inputMode {
 		rightStyle = activeBoxStyle.Copy()
 	}
-
 	rightBox := rightStyle.Width(rightWidth).Height(boxHeight).Render("Request details\n\n" + a.detailsView.View())
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
@@ -282,7 +284,9 @@ func (a App) View() string {
 		case "remove":
 			label = "REMOVE DOMAIN:"
 		case "intercept":
-			label = "INTERCEPT (host,h:v):"
+			label = "REQUEST INJECT (host,h:v):"
+		case "modify":
+			label = "RESPONSE EDIT (host,o:n):"
 		}
 
 		inputBox := lipgloss.NewStyle().Foreground(colorWhite).Background(colorAccent).Padding(0, 1).Render(label)
@@ -299,10 +303,9 @@ func (a App) View() string {
 	} else {
 		helpMenu = keyStyle.Render("q") + descStyle.Render(" quit") + sep +
 			keyStyle.Render("esc") + descStyle.Render(" clear filter") + sep +
-			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
 			keyStyle.Render("b/i/r") + descStyle.Render(" block/ignore/rem") + sep +
-			keyStyle.Render("n") + descStyle.Render(" intercept") + sep +
-			keyStyle.Render("/") + descStyle.Render(" filter")
+			keyStyle.Render("n/m") + descStyle.Render(" request/response") + sep +
+			keyStyle.Render("/") + descStyle.Render(" search")
 	}
 
 	return lipgloss.NewStyle().Margin(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu))

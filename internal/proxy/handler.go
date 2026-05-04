@@ -22,6 +22,7 @@ type ProxyHandler struct {
 	IgnoredDomains *DomainList
 	BlockedDomains *DomainList
 	InterceptRules []InterceptRule
+	ResponseRules  []ResponseRule
 	configFile     string
 }
 
@@ -34,11 +35,23 @@ type ConfigData struct {
 	Blocked        []string        `json:"blocked_domains"`
 	Ignored        []string        `json:"ignored_domains"`
 	InterceptRules []InterceptRule `json:"intercept_rules"`
+	ResponseRules  []ResponseRule  `json:"response_rules"`
 }
 
 type InterceptRule struct {
 	Host    string
 	Headers map[string]string
+}
+
+type ResponseRule struct {
+	Host    string
+	OldText string
+	NewText string
+}
+
+func (ph *ProxyHandler) AddResponseRule(rule ResponseRule) {
+	ph.ResponseRules = append(ph.ResponseRules, rule)
+	ph.SaveConfig()
 }
 
 func (dl *DomainList) Add(domain string) {
@@ -79,6 +92,7 @@ func NewProxyHandler(ch chan RequestLog, configPath string) *ProxyHandler {
 		IgnoredDomains: NewDomainList(),
 		BlockedDomains: NewDomainList(),
 		InterceptRules: []InterceptRule{},
+		ResponseRules:  []ResponseRule{},
 		configFile:     configPath,
 	}
 	ph.LoadConfig()
@@ -102,9 +116,8 @@ func (ph *ProxyHandler) LoadConfig() {
 	for _, d := range config.Ignored {
 		ph.IgnoredDomains.Add(d)
 	}
-	for _, r := range config.InterceptRules {
-		ph.InterceptRules = append(ph.InterceptRules, r)
-	}
+	ph.InterceptRules = config.InterceptRules
+	ph.ResponseRules = config.ResponseRules
 }
 
 func (ph *ProxyHandler) SaveConfig() {
@@ -112,6 +125,7 @@ func (ph *ProxyHandler) SaveConfig() {
 		Blocked:        ph.BlockedDomains.ToSlice(),
 		Ignored:        ph.IgnoredDomains.ToSlice(),
 		InterceptRules: ph.InterceptRules,
+		ResponseRules:  ph.ResponseRules,
 	}
 
 	data, _ := json.MarshalIndent(config, "", "  ")
@@ -142,10 +156,6 @@ func (ph *ProxyHandler) RemoveBlocked(domain string) {
 func (ph *ProxyHandler) RemoveIgnored(domain string) {
 	ph.IgnoredDomains.Remove(domain)
 	ph.SaveConfig()
-}
-
-func (ir *InterceptRule) getInterceptRuleHost() string {
-	return ir.Host
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -189,10 +199,14 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	resp.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	newBody := ph.applyResponseInterception(r.Host, bodyBytes)
+
+	if len(newBody) != len(bodyBytes) {
+		w.Header().Del("Content-Length")
+	}
 
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	w.Write(newBody)
 
 	ph.LogChannel <- RequestLog{
 		Method: r.Method, URL: r.Host + r.URL.Path,
@@ -217,4 +231,13 @@ func (ph *ProxyHandler) AddIntercept(host, key, val string) {
 		})
 	}
 	ph.SaveConfig()
+}
+
+func (ph *ProxyHandler) applyResponseInterception(host string, body []byte) []byte {
+	for _, rule := range ph.ResponseRules {
+		if rule.Host == host {
+			body = bytes.ReplaceAll(body, []byte(rule.OldText), []byte(rule.NewText))
+		}
+	}
+	return body
 }
