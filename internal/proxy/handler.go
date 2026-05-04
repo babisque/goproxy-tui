@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type RequestLog struct {
@@ -15,11 +16,28 @@ type RequestLog struct {
 }
 
 type ProxyHandler struct {
-	LogChannel chan RequestLog
+	LogChannel     chan RequestLog
+	IgnoredDomains map[string]bool
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
+
+	blockedSite := "pudim.com.br"
+	if strings.Contains(r.Host, blockedSite) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("ACESSO NEGADO: Bloqueado pelo GoProxy do Rodrigo!"))
+
+		ph.LogChannel <- RequestLog{
+			Method:  r.Method,
+			URL:     r.Host + r.URL.Path,
+			Status:  http.StatusForbidden,
+			Headers: http.Header{},
+			Body:    "Blocked by proxy rules",
+		}
+
+		return
+	}
 
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {
@@ -45,11 +63,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
 
-	ph.LogChannel <- RequestLog{
-		Method:  r.Method,
-		URL:     r.Host + r.URL.Path,
-		Status:  resp.StatusCode,
-		Headers: resp.Header.Clone(),
-		Body:    string(bodyBytes),
+	if _, ignore := ph.IgnoredDomains[r.Host]; !ignore {
+		ph.LogChannel <- RequestLog{
+			Method:  r.Method,
+			URL:     r.Host + r.URL.Path,
+			Status:  resp.StatusCode,
+			Headers: resp.Header.Clone(),
+			Body:    string(bodyBytes),
+		}
 	}
 }

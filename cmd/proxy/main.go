@@ -12,8 +12,15 @@ import (
 func main() {
 	logChan := make(chan proxy.RequestLog)
 
+	ignoreList := map[string]bool{
+		"google.com":     true,
+		"www.google.com": true,
+		"neverssl.com":   true,
+	}
+
 	proxyHanler := proxy.ProxyHandler{
-		LogChannel: logChan,
+		LogChannel:     logChan,
+		IgnoredDomains: ignoreList,
 	}
 
 	go func() {
