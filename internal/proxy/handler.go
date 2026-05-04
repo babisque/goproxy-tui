@@ -211,6 +211,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	resp.Header.Del("Transfer-Encoding")
+
 	for key, values := range resp.Header {
 		for _, value := range values {
 			w.Header().Add(key, value)
@@ -229,6 +231,10 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if len(newBody) != len(bodyBytes) {
 		w.Header().Del("Content-Length")
 	}
+
+	w.Header().Set("Content-Length", fmt.Sprint(len(newBody)))
+
+	w.Header().Del("Content-Encoding")
 
 	w.WriteHeader(resp.StatusCode)
 	w.Write(newBody)
@@ -368,15 +374,23 @@ type mitmResponseWriter struct {
 }
 
 func (m *mitmResponseWriter) Header() http.Header { return m.header }
+
 func (m *mitmResponseWriter) Write(b []byte) (int, error) {
 	if m.status == 0 {
 		m.WriteHeader(http.StatusOK)
 	}
 	return m.conn.Write(b)
 }
+
 func (m *mitmResponseWriter) WriteHeader(status int) {
+	if m.status != 0 {
+		return
+	}
 	m.status = status
+
 	fmt.Fprintf(m.conn, "HTTP/1.1 %d %s\r\n", status, http.StatusText(status))
+
 	m.header.Write(m.conn)
+
 	m.conn.Write([]byte("\r\n"))
 }
