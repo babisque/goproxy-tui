@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/babisque/goproxy-tui/internal/proxy"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -21,18 +22,20 @@ var (
 )
 
 type App struct {
-	width      int
-	height     int
-	logChannel chan proxy.RequestLog
-	requests   []proxy.RequestLog
-	cursor     int
+	width       int
+	height      int
+	logChannel  chan proxy.RequestLog
+	requests    []proxy.RequestLog
+	cursor      int
+	detailsView viewport.Model
 }
 
 type logMsg proxy.RequestLog
 
 func NewApp(ch chan proxy.RequestLog) App {
 	return App{
-		logChannel: ch,
+		logChannel:  ch,
+		detailsView: viewport.New(0, 0),
 	}
 }
 
@@ -51,6 +54,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.width = msg.Width
 		a.height = msg.Height
 
+		leftWidth := (a.width / 100) * 30
+		rightWidth := a.width - leftWidth - 6
+
+		a.detailsView.Width = rightWidth - 4
+
+		a.detailsView.Height = a.height - 10
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
@@ -65,7 +75,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	return a, nil
+
+	var cmd tea.Cmd
+	a.detailsView, cmd = a.detailsView.Update(msg)
+
+	return a, cmd
 }
 
 func (a App) View() string {
@@ -128,12 +142,17 @@ func (a App) View() string {
 			coloredKey := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(key + ":")
 			detailsBuilder.WriteString(fmt.Sprintf("%s %s\n", coloredKey, joinedValues))
 		}
+
+		detailsBuilder.WriteString("\n--- RESPONSE BODY ---\n")
+		detailsBuilder.WriteString(req.Body)
 	}
+
+	a.detailsView.SetContent(detailsBuilder.String())
 
 	rightBox := boxStyle.Copy().
 		Width(rightWidth).
 		Height(boxHeight).
-		Render("Request details\n\n" + detailsBuilder.String())
+		Render("Request details\n\n" + a.detailsView.View())
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 

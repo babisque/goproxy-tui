@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 )
@@ -10,6 +11,7 @@ type RequestLog struct {
 	URL     string
 	Status  int
 	Headers http.Header
+	Body    string
 }
 
 type ProxyHandler struct {
@@ -24,6 +26,12 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error forwarding request", http.StatusBadGateway)
 		return
 	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Error reading response body", http.StatusInternalServerError)
+		return
+	}
 	defer resp.Body.Close()
 
 	for key, values := range resp.Header {
@@ -31,6 +39,8 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Add(key, value)
 		}
 	}
+
+	resp.Body = io.NopCloser(io.MultiReader(io.NopCloser(bytes.NewBuffer(bodyBytes)), resp.Body))
 
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(w, resp.Body)
@@ -40,5 +50,6 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		URL:     r.Host + r.URL.Path,
 		Status:  resp.StatusCode,
 		Headers: resp.Header.Clone(),
+		Body:    string(bodyBytes),
 	}
 }
