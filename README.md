@@ -18,7 +18,7 @@ A powerful, fast, and terminal-based Man-In-The-Middle (MITM) HTTP/HTTPS proxy w
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/yourusername/goproxy-tui.git](https://github.com/yourusername/goproxy-tui.git)
+   git clone [https://github.com/babisque/goproxy-tui.git](https://github.com/babisque/goproxy-tui.git)
    cd goproxy-tui
    ```
 2. Build the project:
