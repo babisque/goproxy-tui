@@ -32,7 +32,7 @@ func main() {
 		}
 	}()
 
-	app := tui.NewApp(logChan)
+	app := tui.NewApp(&proxyHanler)
 	if _, err := tea.NewProgram(app, tea.WithAltScreen()).Run(); err != nil {
 		log.Fatal("Error running TUI:", err)
 	}

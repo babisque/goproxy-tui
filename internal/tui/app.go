@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/babisque/goproxy-tui/internal/proxy"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -37,17 +38,30 @@ type App struct {
 	cursor      int
 	detailsView viewport.Model
 	focusLeft   bool
+	proxy       *proxy.ProxyHandler
+	input       textinput.Model
+	inputMode   bool
 }
 
 type logMsg proxy.RequestLog
 
-func NewApp(ch chan proxy.RequestLog) App {
+func NewApp(ph *proxy.ProxyHandler) App {
 	vp := viewport.New(0, 0)
 	vp.SetContent("(Empty)")
+
+	ti := textinput.New()
+	ti.Placeholder = "Enter domain to block (e.g., ads.com)"
+	ti.Focus()
+	ti.CharLimit = 156
+	ti.Width = 50
+
 	return App{
-		logChannel:  ch,
+		logChannel:  ph.LogChannel,
 		detailsView: vp,
 		focusLeft:   true,
+		proxy:       ph,
+		input:       ti,
+		inputMode:   false,
 	}
 }
 
@@ -74,12 +88,36 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		rightWidth := a.width - leftWidth - 6
 
 		a.detailsView.Width = rightWidth - 4
-		a.detailsView.Height = a.height - 10
+		a.detailsView.Height = a.height - 12
 
 	case tea.KeyMsg:
+		if a.inputMode {
+			switch msg.String() {
+			case "enter":
+				domain := a.input.Value()
+				if domain != "" {
+					a.proxy.BlockedDomains.Add(domain)
+				}
+				a.input.SetValue("")
+				a.inputMode = false
+				return a, nil
+			case "esc":
+				a.input.SetValue("")
+				a.inputMode = false
+				return a, nil
+			}
+
+			var cmd tea.Cmd
+			a.input, cmd = a.input.Update(msg)
+			return a, cmd
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return a, tea.Quit
+		case "b":
+			a.inputMode = true
+			return a, nil
 		case "tab":
 			a.focusLeft = !a.focusLeft
 		case "left", "h":
@@ -106,15 +144,17 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if !a.focusLeft {
-		var vpCmd tea.Cmd
-		a.detailsView, vpCmd = a.detailsView.Update(msg)
-		cmds = append(cmds, vpCmd)
-	} else {
-		if _, isKey := msg.(tea.KeyMsg); !isKey {
+	if !a.inputMode {
+		if !a.focusLeft {
 			var vpCmd tea.Cmd
 			a.detailsView, vpCmd = a.detailsView.Update(msg)
 			cmds = append(cmds, vpCmd)
+		} else {
+			if _, isKey := msg.(tea.KeyMsg); !isKey {
+				var vpCmd tea.Cmd
+				a.detailsView, vpCmd = a.detailsView.Update(msg)
+				cmds = append(cmds, vpCmd)
+			}
 		}
 	}
 
@@ -126,7 +166,12 @@ func (a App) View() string {
 		return "Loading..."
 	}
 
-	boxHeight := a.height - 4
+	helpHeight := 2
+	boxHeight := a.height - 4 - helpHeight
+	if a.inputMode {
+		boxHeight -= 2
+	}
+
 	leftWidth := (a.width / 100) * 30
 	rightWidth := a.width - leftWidth - 6
 
@@ -149,7 +194,7 @@ func (a App) View() string {
 	}
 
 	leftStyle := inactiveBoxStyle.Copy()
-	if a.focusLeft {
+	if a.focusLeft && !a.inputMode {
 		leftStyle = activeBoxStyle.Copy()
 	}
 
@@ -159,7 +204,7 @@ func (a App) View() string {
 		Render(listBuilder.String())
 
 	rightStyle := inactiveBoxStyle.Copy()
-	if !a.focusLeft {
+	if !a.focusLeft && !a.inputMode {
 		rightStyle = activeBoxStyle.Copy()
 	}
 
@@ -169,6 +214,35 @@ func (a App) View() string {
 		Render("Request details\n\n" + a.detailsView.View())
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+
+	if a.inputMode {
+		inputBox := lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Background(colorAccent).
+			Padding(0, 1).
+			Render("BLOCK DOMAIN:")
+
+		inputUI := lipgloss.JoinHorizontal(lipgloss.Left, inputBox, " ", a.input.View())
+		ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputUI)
+	}
+
+	keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	descStyle := lipgloss.NewStyle().Foreground(colorGray)
+	sep := descStyle.Render(" • ")
+
+	var helpMenu string
+	if a.inputMode {
+		helpMenu = keyStyle.Render("enter") + descStyle.Render(" confirm") + sep +
+			keyStyle.Render("esc") + descStyle.Render(" cancel")
+	} else {
+		helpMenu = keyStyle.Render("q") + descStyle.Render(" quit") + sep +
+			keyStyle.Render("tab/h/l") + descStyle.Render(" switch panel") + sep +
+			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
+			keyStyle.Render("b") + descStyle.Render(" block domain")
+	}
+
+	ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu)
+
 	return lipgloss.NewStyle().Margin(1, 2).Render(ui)
 }
 
@@ -196,6 +270,7 @@ func buildDetails(req proxy.RequestLog) string {
 
 	var prettyJSON bytes.Buffer
 	err := json.Indent(&prettyJSON, []byte(req.Body), "", "  ")
+
 	if err == nil {
 		b.WriteString(prettyJSON.String())
 	} else {
