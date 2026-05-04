@@ -6,9 +6,10 @@ import (
 )
 
 type RequestLog struct {
-	Method string
-	URL    string
-	Status int
+	Method  string
+	URL     string
+	Status  int
+	Headers http.Header
 }
 
 type ProxyHandler struct {
@@ -35,8 +36,9 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, resp.Body)
 
 	ph.LogChannel <- RequestLog{
-		Method: r.Method,
-		URL:    r.Host + r.URL.Path,
-		Status: resp.StatusCode,
+		Method:  r.Method,
+		URL:     r.Host + r.URL.Path,
+		Status:  resp.StatusCode,
+		Headers: resp.Header.Clone(),
 	}
 }

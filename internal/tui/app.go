@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/babisque/goproxy-tui/internal/proxy"
@@ -100,19 +101,39 @@ func (a App) View() string {
 		Height(boxHeight).
 		Render(listBuilder.String())
 
-	var details string
+	var detailsBuilder strings.Builder
+
 	if len(a.requests) == 0 {
-		details = "(Empty)"
+		detailsBuilder.WriteString("(Empty)")
 	} else {
 		req := a.requests[a.cursor]
 
-		details = fmt.Sprintf("Method: %s\nURL: %s\nStatus: %d", req.Method, req.URL, req.Status)
+		detailsBuilder.WriteString(fmt.Sprintf("Method: %s\n", req.Method))
+		detailsBuilder.WriteString(fmt.Sprintf("URL: %s\n", req.URL))
+		detailsBuilder.WriteString(fmt.Sprintf("Status: %d\n\n", req.Status))
+
+		detailsBuilder.WriteString("--- RESPONSE HEADERS ---\n")
+
+		var keys []string
+		for k := range req.Headers {
+			keys = append(keys, k)
+		}
+
+		sort.Strings(keys)
+
+		for _, key := range keys {
+			values := req.Headers[key]
+			joinedValues := strings.Join(values, ", ")
+
+			coloredKey := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(key + ":")
+			detailsBuilder.WriteString(fmt.Sprintf("%s %s\n", coloredKey, joinedValues))
+		}
 	}
 
 	rightBox := boxStyle.Copy().
 		Width(rightWidth).
 		Height(boxHeight).
-		Render("Request details\n\n" + details)
+		Render("Request details\n\n" + detailsBuilder.String())
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 
