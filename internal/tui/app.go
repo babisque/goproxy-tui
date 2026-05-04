@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -191,7 +193,14 @@ func buildDetails(req proxy.RequestLog) string {
 	}
 
 	b.WriteString("\n--- RESPONSE BODY ---\n")
-	b.WriteString(req.Body)
+
+	var prettyJSON bytes.Buffer
+	err := json.Indent(&prettyJSON, []byte(req.Body), "", "  ")
+	if err == nil {
+		b.WriteString(prettyJSON.String())
+	} else {
+		b.WriteString(req.Body)
+	}
 
 	return b.String()
 }
