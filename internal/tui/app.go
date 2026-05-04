@@ -7,6 +7,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/alecthomas/chroma/v2/formatters"
+	"github.com/alecthomas/chroma/v2/lexers"
+	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/babisque/goproxy-tui/internal/proxy"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -298,10 +301,34 @@ func buildDetails(req proxy.RequestLog) string {
 	var prettyJSON bytes.Buffer
 	err := json.Indent(&prettyJSON, []byte(req.Body), "", "  ")
 
-	if err == nil {
+	if err != nil {
+		b.WriteString(req.Body)
+		return b.String()
+	}
+
+	lexer := lexers.Get("json")
+	if lexer == nil {
+		lexer = lexers.Fallback
+	}
+
+	style := styles.Get("solarized-dark")
+	if style == nil {
+		style = styles.Fallback
+	}
+
+	formatter := formatters.Get("terminal256")
+	if formatter == nil {
+		formatter = formatters.Fallback
+	}
+
+	iterator, err := lexer.Tokenise(nil, prettyJSON.String())
+	if err != nil {
 		b.WriteString(prettyJSON.String())
 	} else {
-		b.WriteString(req.Body)
+		err = formatter.Format(&b, style, iterator)
+		if err != nil {
+			b.WriteString(prettyJSON.String())
+		}
 	}
 
 	return b.String()
