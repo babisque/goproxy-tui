@@ -31,7 +31,8 @@ A powerful, fast, and terminal-based Man-In-The-Middle (MITM) HTTP/HTTPS proxy w
 1. **Run the Proxy:**
    ```bash
    ./goproxy-tui
-    ```
+   ```
+
    *The proxy will start on `localhost:8080` (default).*
 
 2. **Install the CA Certificate:**
