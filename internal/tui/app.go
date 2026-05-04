@@ -7,9 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/alecthomas/chroma/v2/formatters"
-	"github.com/alecthomas/chroma/v2/lexers"
-	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/babisque/goproxy-tui/internal/proxy"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -39,6 +36,7 @@ type App struct {
 	logChannel  chan proxy.RequestLog
 	requests    []proxy.RequestLog
 	cursor      int
+	listOffset  int
 	detailsView viewport.Model
 	focusLeft   bool
 	proxy       *proxy.ProxyHandler
@@ -76,22 +74,38 @@ func (a App) Init() tea.Cmd {
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	boxHeight := a.height - 8
+	if a.inputMode {
+		boxHeight -= 3
+	}
+
+	visibleHeight := boxHeight - 6
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+
+	leftWidth := (a.width / 100) * 30
+	rightWidth := a.width - leftWidth - 6
+
 	switch msg := msg.(type) {
 	case logMsg:
 		a.requests = append(a.requests, proxy.RequestLog(msg))
 		filtered := a.FilteredRequests()
-		if len(filtered) == 1 {
-			a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
+
+		if a.cursor == len(filtered)-2 || len(filtered) == 1 {
+			a.cursor = len(filtered) - 1
+			if a.cursor >= a.listOffset+visibleHeight {
+				a.listOffset = a.cursor - visibleHeight + 1
+			}
+			a.detailsView.SetContent(buildDetails(filtered[a.cursor], rightWidth))
 		}
 		return a, waitForLog(a.logChannel)
 
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		leftWidth := (a.width / 100) * 30
-		rightWidth := a.width - leftWidth - 6
 		a.detailsView.Width = rightWidth - 4
-		a.detailsView.Height = a.height - 12
+		a.detailsView.Height = boxHeight - 6
 
 	case tea.KeyMsg:
 		if a.inputMode {
@@ -99,44 +113,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				val := a.input.Value()
 				if val != "" {
-					switch a.inputTarget {
-					case "block":
-						a.proxy.AddBlocked(val)
-					case "ignore":
-						a.proxy.AddIgnored(val)
-					case "remove":
-						a.proxy.RemoveBlocked(val)
-						a.proxy.RemoveIgnored(val)
-					case "filter":
-						a.filterQuery = val
-						a.cursor = 0
-						filtered := a.FilteredRequests()
-						if len(filtered) > 0 {
-							a.detailsView.SetContent(buildDetails(filtered[0]))
-						}
-					case "intercept":
-						parts := strings.Split(val, ",")
-						if len(parts) == 2 {
-							host := strings.TrimSpace(parts[0])
-							kv := strings.Split(parts[1], ":")
-							if len(kv) == 2 {
-								a.proxy.AddIntercept(host, strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
-							}
-						}
-					case "modify":
-						parts := strings.Split(val, ",")
-						if len(parts) == 2 {
-							host := strings.TrimSpace(parts[0])
-							textParts := strings.Split(parts[1], ":")
-							if len(textParts) == 2 {
-								a.proxy.AddResponseRule(proxy.ResponseRule{
-									Host:    host,
-									OldText: strings.TrimSpace(textParts[0]),
-									NewText: strings.TrimSpace(textParts[1]),
-								})
-							}
-						}
-					}
+					a.handleCommand(val)
 				}
 				a.input.SetValue("")
 				a.inputMode = false
@@ -157,40 +134,29 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			a.filterQuery = ""
 			a.cursor = 0
+			a.listOffset = 0
 			filtered := a.FilteredRequests()
 			if len(filtered) > 0 {
-				a.detailsView.SetContent(buildDetails(filtered[0]))
+				a.detailsView.SetContent(buildDetails(filtered[0], rightWidth))
 			}
-		case "b":
-			a.inputMode = true
-			a.inputTarget = "block"
-			a.input.Placeholder = "Domain to block..."
-		case "i":
-			a.inputMode = true
-			a.inputTarget = "ignore"
-			a.input.Placeholder = "Domain to ignore..."
-		case "n":
-			a.inputMode = true
-			a.inputTarget = "intercept"
-			a.input.Placeholder = "host,header:value"
-		case "m":
-			a.inputMode = true
-			a.inputTarget = "modify"
-			a.input.Placeholder = "host,oldText:newText"
-		case "/":
-			a.inputMode = true
-			a.inputTarget = "filter"
-			a.input.Placeholder = "Filter by URL..."
-		case "r":
-			a.inputMode = true
-			a.inputTarget = "remove"
-			a.input.Placeholder = "Domain to remove..."
 		case "tab":
 			a.focusLeft = !a.focusLeft
 		case "left", "h":
 			a.focusLeft = true
 		case "right", "l":
 			a.focusLeft = false
+		case "b":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "block", "Domain to block..."
+		case "i":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "ignore", "Domain to ignore..."
+		case "n":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "intercept", "host,header:value"
+		case "m":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "modify", "host,oldText:newText"
+		case "/":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "filter", "Search URL..."
+		case "r":
+			a.inputMode, a.inputTarget, a.input.Placeholder = true, "remove", "Domain to remove..."
 		}
 
 		if a.focusLeft {
@@ -199,20 +165,26 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "up", "k":
 				if a.cursor > 0 {
 					a.cursor--
-					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
+					if a.cursor < a.listOffset {
+						a.listOffset = a.cursor
+					}
+					a.detailsView.SetContent(buildDetails(filtered[a.cursor], rightWidth))
 					a.detailsView.GotoTop()
 				}
 			case "down", "j":
 				if a.cursor < len(filtered)-1 {
 					a.cursor++
-					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
+					if a.cursor >= a.listOffset+visibleHeight {
+						a.listOffset = a.cursor - visibleHeight + 1
+					}
+					a.detailsView.SetContent(buildDetails(filtered[a.cursor], rightWidth))
 					a.detailsView.GotoTop()
 				}
 			}
 		}
 	}
 
-	if !a.inputMode {
+	if !a.inputMode && !a.focusLeft {
 		var vpCmd tea.Cmd
 		a.detailsView, vpCmd = a.detailsView.Update(msg)
 		cmds = append(cmds, vpCmd)
@@ -221,15 +193,53 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
+func (a *App) handleCommand(val string) {
+	switch a.inputTarget {
+	case "block":
+		a.proxy.AddBlocked(val)
+	case "ignore":
+		a.proxy.AddIgnored(val)
+	case "filter":
+		a.filterQuery = val
+		a.cursor, a.listOffset = 0, 0
+	case "remove":
+		a.proxy.RemoveBlocked(val)
+		a.proxy.RemoveIgnored(val)
+	case "intercept":
+		parts := strings.Split(val, ",")
+		if len(parts) == 2 {
+			kv := strings.Split(parts[1], ":")
+			if len(kv) == 2 {
+				a.proxy.AddIntercept(strings.TrimSpace(parts[0]), strings.TrimSpace(kv[0]), strings.TrimSpace(kv[1]))
+			}
+		}
+	case "modify":
+		parts := strings.Split(val, ",")
+		if len(parts) == 2 {
+			tp := strings.Split(parts[1], ":")
+			if len(tp) == 2 {
+				a.proxy.AddResponseRule(proxy.ResponseRule{
+					Host:    strings.TrimSpace(parts[0]),
+					OldText: strings.TrimSpace(tp[0]),
+					NewText: strings.TrimSpace(tp[1]),
+				})
+			}
+		}
+	}
+}
+
 func (a App) View() string {
 	if a.width == 0 {
 		return "Loading..."
 	}
 
-	helpHeight := 2
-	boxHeight := a.height - 4 - helpHeight
+	boxHeight := a.height - 8
 	if a.inputMode {
-		boxHeight -= 2
+		boxHeight -= 3
+	}
+	visibleHeight := boxHeight - 6
+	if visibleHeight < 1 {
+		visibleHeight = 1
 	}
 
 	filtered := a.FilteredRequests()
@@ -237,78 +247,72 @@ func (a App) View() string {
 	rightWidth := a.width - leftWidth - 6
 
 	var listBuilder strings.Builder
-	title := "Requests list"
+	title := lipgloss.NewStyle().Bold(true).Underline(true).Render("Requests list")
 	if a.filterQuery != "" {
-		title = fmt.Sprintf("Requests list (Filter: %s)", a.filterQuery)
+		title = lipgloss.NewStyle().Bold(true).Underline(true).Render(fmt.Sprintf("Search: %s", a.filterQuery))
 	}
 	listBuilder.WriteString(title + "\n\n")
 
 	if len(filtered) == 0 {
 		listBuilder.WriteString("(Empty)")
 	} else {
-		for i, req := range filtered {
-			text := fmt.Sprintf("[%d] %s %s", req.Status, req.Method, req.URL)
+		endIndex := a.listOffset + visibleHeight
+		if endIndex > len(filtered) {
+			endIndex = len(filtered)
+		}
+
+		for i := a.listOffset; i < endIndex; i++ {
+			req := filtered[i]
+
+			maxLineLen := leftWidth - 6
+			methodPart := fmt.Sprintf("[%d] %s ", req.Status, req.Method)
+			lineText := methodPart + req.URL
+
+			if len(lineText) > maxLineLen {
+				lineText = lineText[:maxLineLen-3] + "..."
+			}
+
 			if i == a.cursor {
-				row := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render("> " + text)
-				listBuilder.WriteString(row + "\n")
+				listBuilder.WriteString(lipgloss.NewStyle().
+					Foreground(colorWhite).
+					Background(colorAccent).
+					Width(leftWidth-4).
+					Render("> "+lineText) + "\n")
 			} else {
-				row := lipgloss.NewStyle().Foreground(colorGray).Render("  " + text)
-				listBuilder.WriteString(row + "\n")
+				listBuilder.WriteString(lipgloss.NewStyle().
+					Foreground(colorGray).
+					Width(leftWidth-4).
+					Render("  "+lineText) + "\n")
 			}
 		}
 	}
 
-	leftStyle := inactiveBoxStyle.Copy()
+	leftStyle := inactiveBoxStyle.Copy().Width(leftWidth).Height(boxHeight)
 	if a.focusLeft && !a.inputMode {
-		leftStyle = activeBoxStyle.Copy()
+		leftStyle = activeBoxStyle.Copy().Width(leftWidth).Height(boxHeight)
 	}
-	leftBox := leftStyle.Width(leftWidth).Height(boxHeight).Render(listBuilder.String())
 
-	rightStyle := inactiveBoxStyle.Copy()
+	rightStyle := inactiveBoxStyle.Copy().Width(rightWidth).Height(boxHeight)
 	if !a.focusLeft && !a.inputMode {
-		rightStyle = activeBoxStyle.Copy()
+		rightStyle = activeBoxStyle.Copy().Width(rightWidth).Height(boxHeight)
 	}
-	rightBox := rightStyle.Width(rightWidth).Height(boxHeight).Render("Request details\n\n" + a.detailsView.View())
 
-	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
+	ui := lipgloss.JoinHorizontal(lipgloss.Top,
+		leftStyle.Render(listBuilder.String()),
+		rightStyle.Render("Request details\n\n"+a.detailsView.View()),
+	)
+
+	help := lipgloss.NewStyle().Foreground(colorGray).Render("q: quit • esc: clear • j/k: nav • tab: swap • b/i/r: rules • n/m: intercept/modify • /: search")
+
+	finalView := lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+help)
 
 	if a.inputMode {
-		label := "COMMAND:"
-		switch a.inputTarget {
-		case "block":
-			label = "BLOCK DOMAIN:"
-		case "ignore":
-			label = "IGNORE DOMAIN:"
-		case "filter":
-			label = "SEARCH URL:"
-		case "remove":
-			label = "REMOVE DOMAIN:"
-		case "intercept":
-			label = "REQUEST INJECT (host,h:v):"
-		case "modify":
-			label = "RESPONSE EDIT (host,o:n):"
-		}
-
-		inputBox := lipgloss.NewStyle().Foreground(colorWhite).Background(colorAccent).Padding(0, 1).Render(label)
-		ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+lipgloss.JoinHorizontal(lipgloss.Left, inputBox, " ", a.input.View()))
+		prompt := lipgloss.NewStyle().Background(colorAccent).Foreground(colorWhite).Padding(0, 1).Render(strings.ToUpper(a.inputTarget) + ":")
+		inputView := lipgloss.JoinHorizontal(lipgloss.Left, prompt, " ", a.input.View())
+		finalView = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputView, "\n"+help)
 	}
 
-	keyStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-	descStyle := lipgloss.NewStyle().Foreground(colorGray)
-	sep := descStyle.Render(" • ")
-
-	helpMenu := ""
-	if a.inputMode {
-		helpMenu = keyStyle.Render("enter") + descStyle.Render(" confirm") + sep + keyStyle.Render("esc") + descStyle.Render(" cancel")
-	} else {
-		helpMenu = keyStyle.Render("q") + descStyle.Render(" quit") + sep +
-			keyStyle.Render("esc") + descStyle.Render(" clear filter") + sep +
-			keyStyle.Render("b/i/r") + descStyle.Render(" block/ignore/rem") + sep +
-			keyStyle.Render("n/m") + descStyle.Render(" request/response") + sep +
-			keyStyle.Render("/") + descStyle.Render(" search")
-	}
-
-	return lipgloss.NewStyle().Margin(1, 2).Render(lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu))
+	return finalView
 }
 
 func (a App) FilteredRequests() []proxy.RequestLog {
@@ -325,29 +329,56 @@ func (a App) FilteredRequests() []proxy.RequestLog {
 	return res
 }
 
-func buildDetails(req proxy.RequestLog) string {
+func buildDetails(req proxy.RequestLog, width int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Method: %s\nURL: %s\nStatus: %d\n\n--- HEADERS ---\n", req.Method, req.URL, req.Status))
+	labelStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+
+	b.WriteString(labelStyle.Render("METHOD: ") + req.Method + "\n")
+	b.WriteString(labelStyle.Render("URL:    ") + req.URL + "\n")
+	b.WriteString(labelStyle.Render("STATUS: ") + fmt.Sprint(req.Status) + "\n\n")
+
+	b.WriteString(lipgloss.NewStyle().Foreground(colorWhite).Underline(true).Render("HEADERS") + "\n")
 	keys := make([]string, 0, len(req.Headers))
 	for k := range req.Headers {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		b.WriteString(lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(k+":") + " " + strings.Join(req.Headers[k], ", ") + "\n")
+		b.WriteString(labelStyle.Render(k+": ") + strings.Join(req.Headers[k], ", ") + "\n")
 	}
-	b.WriteString("\n--- BODY ---\n")
+
+	b.WriteString("\n" + lipgloss.NewStyle().Foreground(colorWhite).Underline(true).Render("BODY") + "\n")
+
+	bodyText := req.Body
+	if bodyText == "" {
+		b.WriteString("(Empty)")
+		return b.String()
+	}
 
 	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, []byte(req.Body), "", "  "); err == nil {
-		lexer := lexers.Get("json")
-		style := styles.Get("monokai")
-		formatter := formatters.Get("terminal256")
-		iterator, _ := lexer.Tokenise(nil, pretty.String())
-		formatter.Format(&b, style, iterator)
-	} else {
-		b.WriteString(req.Body)
+	if err := json.Indent(&pretty, []byte(bodyText), "", "  "); err == nil {
+		bodyText = pretty.String()
 	}
+
+	bodyText = strings.ReplaceAll(bodyText, `\n`, "\n")
+	bodyText = strings.ReplaceAll(bodyText, `\"`, `"`)
+
+	cleaned := make([]rune, 0, len(bodyText))
+	for _, r := range bodyText {
+		if r == '\n' || r == '\t' || (r >= 32 && r != 127) {
+			cleaned = append(cleaned, r)
+		} else {
+			cleaned = append(cleaned, '·')
+		}
+	}
+	bodyText = string(cleaned)
+
+	wrappedBody := lipgloss.NewStyle().
+		Width(width - 6).
+		Render(bodyText)
+
+	b.WriteString(wrappedBody)
+
 	return b.String()
 }
 
