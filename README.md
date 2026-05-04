@@ -16,6 +16,10 @@ A powerful, fast, and terminal-based Man-In-The-Middle (MITM) HTTP/HTTPS proxy w
 
 ## 🚀 Installation
 
+### Option 1: Pre-compiled Binaries (Recommended)
+You can download the ready-to-use binaries for Windows, Linux, and macOS directly from the [Releases page](https://github.com/babisque/goproxy-tui/releases). No Go installation required!
+
+### Option 2: Build from Source
 1. Clone the repository:
    ```bash
    git clone [https://github.com/babisque/goproxy-tui.git](https://github.com/babisque/goproxy-tui.git)
@@ -32,11 +36,15 @@ A powerful, fast, and terminal-based Man-In-The-Middle (MITM) HTTP/HTTPS proxy w
    ```bash
    ./goproxy-tui
    ```
-
    *The proxy will start on `localhost:8080` (default).*
 
 2. **Install the CA Certificate:**
-   On the first run, GoProxy generates a `ca.crt` file in the root directory. To intercept HTTPS traffic without browser security warnings, you **must** import this certificate into your OS or Browser's "Trusted Root Certification Authorities" store.
+   On the first run, GoProxy generates a `ca.crt` file in your OS user configuration directory:
+   * **Windows:** `%AppData%\goproxy-tui\ca.crt`
+   * **Linux:** `~/.config/goproxy-tui\ca.crt`
+   * **macOS:** `~/Library/Application Support/goproxy-tui/ca.crt`
+   
+   To intercept HTTPS traffic without browser security warnings, you **must** import this certificate into your OS or Browser's "Trusted Root Certification Authorities" store.
 
 3. **Configure your Browser:**
    Set your system or browser proxy to `HTTP`, Address: `127.0.0.1`, Port: `8080`.
