@@ -24,6 +24,7 @@ type App struct {
 	height     int
 	logChannel chan proxy.RequestLog
 	requests   []proxy.RequestLog
+	cursor     int
 }
 
 type logMsg proxy.RequestLog
@@ -53,6 +54,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return a, tea.Quit
+		case "up", "k":
+			if a.cursor > 0 {
+				a.cursor--
+			}
+		case "down", "j":
+			if a.cursor < len(a.requests)-1 {
+				a.cursor++
+			}
 		}
 	}
 	return a, nil
@@ -74,12 +83,16 @@ func (a App) View() string {
 		listBuilder.WriteString("(Empty)")
 	} else {
 		for i, req := range a.requests {
-			row := fmt.Sprintf("[%d] %s %s\n", req.Status, req.Method, req.URL)
-			listBuilder.WriteString(row)
-
-			if i > boxHeight-8 {
-				listBuilder.WriteString("... (more requests)\n")
-				break
+			if i == a.cursor {
+				row := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(
+					fmt.Sprintf("> [%d] %s %s\n", req.Status, req.Method, req.URL),
+				)
+				listBuilder.WriteString(row)
+			} else {
+				row := lipgloss.NewStyle().Foreground(colorGray).Render(
+					fmt.Sprintf("  [%d] %s %s\n", req.Status, req.Method, req.URL),
+				)
+				listBuilder.WriteString(row)
 			}
 		}
 	}
@@ -89,10 +102,19 @@ func (a App) View() string {
 		Height(boxHeight).
 		Render(listBuilder.String())
 
+	var details string
+	if len(a.requests) == 0 {
+		details = "(Empty)"
+	} else {
+		req := a.requests[a.cursor]
+
+		details = fmt.Sprintf("Method: %s\nURL: %s\nStatus: %d", req.Method, req.URL, req.Status)
+	}
+
 	rightBox := boxStyle.Copy().
 		Width(rightWidth).
 		Height(boxHeight).
-		Render("Request details\n\n(Empty)")
+		Render("Request details\n\n" + details)
 
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 
