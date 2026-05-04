@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 )
@@ -18,7 +17,6 @@ type ProxyHandler struct {
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
-	fmt.Println(r.Method, r.Host)
 
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {
