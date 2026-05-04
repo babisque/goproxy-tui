@@ -12,7 +12,12 @@ import (
 func main() {
 	logChan := make(chan proxy.RequestLog)
 
-	proxyHandler := proxy.NewProxyHandler(logChan, "config.json")
+	caCert, caKey, err := proxy.LoadOrCreateCA()
+	if err != nil {
+		log.Fatal("Error loading/creating CA:", err)
+	}
+
+	proxyHandler := proxy.NewProxyHandler(logChan, "config.json", caCert, caKey)
 
 	go func() {
 		err := http.ListenAndServe(":8080", proxyHandler)
