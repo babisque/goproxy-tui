@@ -57,4 +57,3 @@ A powerful, fast, and terminal-based Man-In-The-Middle (MITM) HTTP/HTTPS proxy w
 * [Go](https://go.dev/) - The core language
 * [Bubble Tea](https://github.com/charmbracelet/bubbletea) - TUI framework
 * [Lip Gloss](https://github.com/charmbracelet/lipgloss) - Terminal styling
-```
