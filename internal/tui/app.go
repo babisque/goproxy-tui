@@ -45,6 +45,7 @@ type App struct {
 	input       textinput.Model
 	inputMode   bool
 	inputTarget string
+	filterQuery string
 }
 
 type logMsg proxy.RequestLog
@@ -78,8 +79,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case logMsg:
 		a.requests = append(a.requests, proxy.RequestLog(msg))
-		if len(a.requests) == 1 {
-			a.detailsView.SetContent(buildDetails(a.requests[a.cursor]))
+		if len(a.FilteredRequests()) == 1 {
+			a.detailsView.SetContent(buildDetails(a.FilteredRequests()[a.cursor]))
 		}
 		return a, waitForLog(a.logChannel)
 
@@ -107,6 +108,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "remove":
 						a.proxy.RemoveBlocked(domain)
 						a.proxy.RemoveIgnored(domain)
+					case "filter":
+						a.filterQuery = domain
+						a.cursor = 0
+						filtered := a.FilteredRequests()
+						if len(filtered) > 0 {
+							a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
+						} else {
+							a.detailsView.SetContent("(Empty)")
+						}
 					}
 				}
 				a.input.SetValue("")
@@ -147,20 +157,27 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.inputTarget = "remove"
 			a.input.Placeholder = "Enter domain to UNBLOCK/UNIGNORE..."
 			return a, nil
+		case "/":
+			a.inputMode = true
+			a.inputTarget = "filter"
+			a.input.Placeholder = "Filter requests by URL..."
+			return a, nil
 		}
 
 		if a.focusLeft {
 			switch msg.String() {
 			case "up", "k":
+				filtered := a.FilteredRequests()
 				if a.cursor > 0 {
 					a.cursor--
-					a.detailsView.SetContent(buildDetails(a.requests[a.cursor]))
+					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
 					a.detailsView.GotoTop()
 				}
 			case "down", "j":
-				if a.cursor < len(a.requests)-1 {
+				filtered := a.FilteredRequests()
+				if a.cursor < len(filtered)-1 {
 					a.cursor++
-					a.detailsView.SetContent(buildDetails(a.requests[a.cursor]))
+					a.detailsView.SetContent(buildDetails(filtered[a.cursor]))
 					a.detailsView.GotoTop()
 				}
 			}
@@ -201,10 +218,12 @@ func (a App) View() string {
 	var listBuilder strings.Builder
 	listBuilder.WriteString("Requests list\n\n")
 
-	if len(a.requests) == 0 {
+	filtered := a.FilteredRequests()
+
+	if len(filtered) == 0 {
 		listBuilder.WriteString("(Empty)")
 	} else {
-		for i, req := range a.requests {
+		for i, req := range filtered {
 			text := fmt.Sprintf("[%d] %s %s", req.Status, req.Method, req.URL)
 			if i == a.cursor {
 				row := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render("> " + text)
@@ -240,8 +259,13 @@ func (a App) View() string {
 
 	if a.inputMode {
 		label := "BLOCK DOMAIN:"
-		if a.inputTarget == "ignore" {
+		switch a.inputTarget {
+		case "ignore":
 			label = "IGNORE DOMAIN:"
+		case "filter":
+			label = "SEARCH URL:"
+		case "remove":
+			label = "REMOVE DOMAIN:"
 		}
 
 		inputBox := lipgloss.NewStyle().
@@ -268,7 +292,8 @@ func (a App) View() string {
 			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
 			keyStyle.Render("b") + descStyle.Render(" block") + sep +
 			keyStyle.Render("i") + descStyle.Render(" ignore") + sep +
-			keyStyle.Render("r") + descStyle.Render(" remove")
+			keyStyle.Render("r") + descStyle.Render(" remove") + sep +
+			keyStyle.Render("/") + descStyle.Render(" filter")
 	}
 
 	ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu)
@@ -339,4 +364,18 @@ func waitForLog(ch chan proxy.RequestLog) tea.Cmd {
 		log := <-ch
 		return logMsg(log)
 	}
+}
+
+func (a App) FilteredRequests() []proxy.RequestLog {
+	if a.filterQuery == "" {
+		return a.requests
+	}
+
+	result := []proxy.RequestLog{}
+	for _, req := range a.requests {
+		if strings.Contains(strings.ToLower(req.URL), strings.ToLower(a.filterQuery)) {
+			result = append(result, req)
+		}
+	}
+	return result
 }
