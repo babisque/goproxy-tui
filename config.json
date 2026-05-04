@@ -1,8 +1,9 @@
 {
-    "blocked_domains": [
-        "pudim.com.br"
-    ],
-    "ignored_domains": [
-        "google.com"
-    ]
+  "blocked_domains": [
+    "pudim.com.br"
+  ],
+  "ignored_domains": [
+    "google.com",
+    "google.com.br"
+  ]
 }

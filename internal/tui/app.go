@@ -96,10 +96,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				domain := a.input.Value()
 				if domain != "" {
-					if a.inputTarget == "block" {
+					switch a.inputTarget {
+					case "block":
 						a.proxy.AddBlocked(domain)
-					} else {
+					case "ignore":
 						a.proxy.AddIgnored(domain)
+					case "remove":
+						a.proxy.RemoveBlocked(domain)
+						a.proxy.RemoveIgnored(domain)
 					}
 				}
 				a.input.SetValue("")
@@ -135,6 +139,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.focusLeft = true
 		case "right", "l":
 			a.focusLeft = false
+		case "r":
+			a.inputMode = true
+			a.inputTarget = "remove"
+			a.input.Placeholder = "Enter domain to UNBLOCK/UNIGNORE..."
+			return a, nil
 		}
 
 		if a.focusLeft {
@@ -255,7 +264,8 @@ func (a App) View() string {
 			keyStyle.Render("tab/h/l") + descStyle.Render(" switch panel") + sep +
 			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
 			keyStyle.Render("b") + descStyle.Render(" block") + sep +
-			keyStyle.Render("i") + descStyle.Render(" ignore")
+			keyStyle.Render("i") + descStyle.Render(" ignore") + sep +
+			keyStyle.Render("r") + descStyle.Render(" remove")
 	}
 
 	ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu)

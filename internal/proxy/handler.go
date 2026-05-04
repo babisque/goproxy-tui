@@ -122,6 +122,16 @@ func NewDomainList() *DomainList {
 	}
 }
 
+func (ph *ProxyHandler) RemoveBlocked(domain string) {
+	ph.BlockedDomains.Remove(domain)
+	ph.SaveConfig()
+}
+
+func (ph *ProxyHandler) RemoveIgnored(domain string) {
+	ph.IgnoredDomains.Remove(domain)
+	ph.SaveConfig()
+}
+
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
 
