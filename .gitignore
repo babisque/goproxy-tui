@@ -23,5 +23,7 @@
 # OS generated files
 .DS_Store
 Thumbs.db
+/build/
 ca.crt
 ca.key
+config.json

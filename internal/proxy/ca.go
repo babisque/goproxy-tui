@@ -8,26 +8,33 @@ import (
 	"encoding/pem"
 	"math/big"
 	"os"
+	"path/filepath"
 	"time"
 )
 
-func LoadOrCreateCA() (caCert *x509.Certificate, caKey *rsa.PrivateKey, err error) {
-	certFile := "ca.crt"
-	keyFile := "ca.key"
+func LoadOrCreateCA(storagePath string) (*x509.Certificate, *rsa.PrivateKey, error) {
+	certPath := filepath.Join(storagePath, "ca.crt")
+	keyPath := filepath.Join(storagePath, "ca.key")
 
-	if _, err := os.Stat(certFile); err == nil {
-		certBytes, _ := os.ReadFile(certFile)
-		keyBytes, _ := os.ReadFile(keyFile)
+	if _, err := os.Stat(certPath); err == nil {
+		certBytes, _ := os.ReadFile(certPath)
+		keyBytes, _ := os.ReadFile(keyPath)
 
 		certBlock, _ := pem.Decode(certBytes)
 		keyBlock, _ := pem.Decode(keyBytes)
 
-		caCert, _ = x509.ParseCertificate(certBlock.Bytes)
-		caKey, _ = x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		caCert, err := x509.ParseCertificate(certBlock.Bytes)
+		if err != nil {
+			return nil, nil, err
+		}
+		caKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		if err != nil {
+			return nil, nil, err
+		}
 		return caCert, caKey, nil
 	}
 
-	caKey, err = rsa.GenerateKey(rand.Reader, 2048)
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -35,10 +42,10 @@ func LoadOrCreateCA() (caCert *x509.Certificate, caKey *rsa.PrivateKey, err erro
 	template := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().Unix()),
 		Subject: pkix.Name{
-			Organization: []string{"Rodrigo GoProxy MITM"},
-			CommonName:   "Rodrigo Proxy Root CA",
+			Organization: []string{"GoProxy MITM"},
+			CommonName:   "GoProxy Root CA",
 		},
-		NotBefore:             time.Now(),
+		NotBefore:             time.Now().Add(-24 * time.Hour),
 		NotAfter:              time.Now().AddDate(10, 0, 0),
 		IsCA:                  true,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
@@ -51,15 +58,15 @@ func LoadOrCreateCA() (caCert *x509.Certificate, caKey *rsa.PrivateKey, err erro
 		return nil, nil, err
 	}
 
-	savePEM(certFile, "CERTIFICATE", certBytes)
-	savePEM(keyFile, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(caKey))
+	savePEM(certPath, "CERTIFICATE", certBytes)
+	savePEM(keyPath, "RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(caKey))
 
-	caCert, _ = x509.ParseCertificate(certBytes)
+	caCert, _ := x509.ParseCertificate(certBytes)
 	return caCert, caKey, nil
 }
 
-func savePEM(filename, pemType string, bytes []byte) {
-	file, _ := os.Create(filename)
-	defer file.Close()
-	pem.Encode(file, &pem.Block{Type: pemType, Bytes: bytes})
+func savePEM(path, pemType string, b []byte) {
+	f, _ := os.Create(path)
+	defer f.Close()
+	pem.Encode(f, &pem.Block{Type: pemType, Bytes: b})
 }
