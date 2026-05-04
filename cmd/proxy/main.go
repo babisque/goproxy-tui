@@ -12,27 +12,17 @@ import (
 func main() {
 	logChan := make(chan proxy.RequestLog)
 
-	ignored := proxy.NewDomainList()
-	ignored.Add("google.com")
-	ignored.Add("neverssl.com")
-
-	blocked := proxy.NewDomainList()
-	blocked.Add("pudim.com.br")
-
-	proxyHanler := proxy.ProxyHandler{
-		LogChannel:     logChan,
-		IgnoredDomains: ignored,
-		BlockedDomains: blocked,
-	}
+	proxyHandler := proxy.NewProxyHandler(logChan, "config.json")
 
 	go func() {
-		err := http.ListenAndServe(":8080", &proxyHanler)
+		err := http.ListenAndServe(":8080", proxyHandler)
 		if err != nil {
 			log.Fatal("Error starting proxy server:", err)
 		}
 	}()
 
-	app := tui.NewApp(&proxyHanler)
+	app := tui.NewApp(proxyHandler)
+
 	if _, err := tea.NewProgram(app, tea.WithAltScreen()).Run(); err != nil {
 		log.Fatal("Error running TUI:", err)
 	}

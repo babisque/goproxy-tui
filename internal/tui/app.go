@@ -97,9 +97,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				domain := a.input.Value()
 				if domain != "" {
 					if a.inputTarget == "block" {
-						a.proxy.BlockedDomains.Add(domain)
+						a.proxy.AddBlocked(domain)
 					} else {
-						a.proxy.IgnoredDomains.Add(domain)
+						a.proxy.AddIgnored(domain)
 					}
 				}
 				a.input.SetValue("")
