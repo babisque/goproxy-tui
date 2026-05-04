@@ -41,6 +41,7 @@ type App struct {
 	proxy       *proxy.ProxyHandler
 	input       textinput.Model
 	inputMode   bool
+	inputTarget string
 }
 
 type logMsg proxy.RequestLog
@@ -50,7 +51,6 @@ func NewApp(ph *proxy.ProxyHandler) App {
 	vp.SetContent("(Empty)")
 
 	ti := textinput.New()
-	ti.Placeholder = "Enter domain to block (e.g., ads.com)"
 	ti.Focus()
 	ti.CharLimit = 156
 	ti.Width = 50
@@ -96,7 +96,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter":
 				domain := a.input.Value()
 				if domain != "" {
-					a.proxy.BlockedDomains.Add(domain)
+					if a.inputTarget == "block" {
+						a.proxy.BlockedDomains.Add(domain)
+					} else {
+						a.proxy.IgnoredDomains.Add(domain)
+					}
 				}
 				a.input.SetValue("")
 				a.inputMode = false
@@ -117,6 +121,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case "b":
 			a.inputMode = true
+			a.inputTarget = "block"
+			a.input.Placeholder = "Enter domain to block..."
+			return a, nil
+		case "i":
+			a.inputMode = true
+			a.inputTarget = "ignore"
+			a.input.Placeholder = "Enter domain to ignore..."
 			return a, nil
 		case "tab":
 			a.focusLeft = !a.focusLeft
@@ -216,11 +227,16 @@ func (a App) View() string {
 	ui := lipgloss.JoinHorizontal(lipgloss.Top, leftBox, rightBox)
 
 	if a.inputMode {
+		label := "BLOCK DOMAIN:"
+		if a.inputTarget == "ignore" {
+			label = "IGNORE DOMAIN:"
+		}
+
 		inputBox := lipgloss.NewStyle().
 			Foreground(colorWhite).
 			Background(colorAccent).
 			Padding(0, 1).
-			Render("BLOCK DOMAIN:")
+			Render(label)
 
 		inputUI := lipgloss.JoinHorizontal(lipgloss.Left, inputBox, " ", a.input.View())
 		ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputUI)
@@ -238,7 +254,8 @@ func (a App) View() string {
 		helpMenu = keyStyle.Render("q") + descStyle.Render(" quit") + sep +
 			keyStyle.Render("tab/h/l") + descStyle.Render(" switch panel") + sep +
 			keyStyle.Render("j/k") + descStyle.Render(" navigate") + sep +
-			keyStyle.Render("b") + descStyle.Render(" block domain")
+			keyStyle.Render("b") + descStyle.Render(" block") + sep +
+			keyStyle.Render("i") + descStyle.Render(" ignore")
 	}
 
 	ui = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+helpMenu)
