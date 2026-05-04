@@ -83,16 +83,14 @@ func (a App) View() string {
 		listBuilder.WriteString("(Empty)")
 	} else {
 		for i, req := range a.requests {
+			text := fmt.Sprintf("[%d] %s %s", req.Status, req.Method, req.URL)
+
 			if i == a.cursor {
-				row := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(
-					fmt.Sprintf("> [%d] %s %s\n", req.Status, req.Method, req.URL),
-				)
-				listBuilder.WriteString(row)
+				row := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render("> " + text)
+				listBuilder.WriteString(row + "\n")
 			} else {
-				row := lipgloss.NewStyle().Foreground(colorGray).Render(
-					fmt.Sprintf("  [%d] %s %s\n", req.Status, req.Method, req.URL),
-				)
-				listBuilder.WriteString(row)
+				row := lipgloss.NewStyle().Foreground(colorGray).Render("  " + text)
+				listBuilder.WriteString(row + "\n")
 			}
 		}
 	}
