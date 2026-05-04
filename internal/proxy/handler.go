@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
-	"strings"
+	"sync"
 )
 
 type RequestLog struct {
@@ -17,16 +17,49 @@ type RequestLog struct {
 
 type ProxyHandler struct {
 	LogChannel     chan RequestLog
-	IgnoredDomains map[string]bool
+	IgnoredDomains *DomainList
+	BlockedDomains *DomainList
+}
+
+type DomainList struct {
+	mu      sync.RWMutex
+	domains map[string]bool
+}
+
+func (dl *DomainList) Add(domain string) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	dl.domains[domain] = true
+}
+
+func (dl *DomainList) Remove(domain string) {
+	dl.mu.Lock()
+	defer dl.mu.Unlock()
+
+	delete(dl.domains, domain)
+}
+
+func (dl *DomainList) Contains(domain string) bool {
+	dl.mu.RLock()
+	defer dl.mu.RUnlock()
+
+	_, exists := dl.domains[domain]
+	return exists
+}
+
+func NewDomainList() *DomainList {
+	return &DomainList{
+		domains: make(map[string]bool),
+	}
 }
 
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r.RequestURI = ""
 
-	blockedSite := "pudim.com.br"
-	if strings.Contains(r.Host, blockedSite) {
+	if ph.BlockedDomains.Contains(r.Host) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte("ACESSO NEGADO: Bloqueado pelo GoProxy do Rodrigo!"))
+		w.Write([]byte("Access to " + r.Host + " is blocked by the proxy rules."))
 
 		ph.LogChannel <- RequestLog{
 			Method:  r.Method,
@@ -51,7 +84,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if _, ignore := ph.IgnoredDomains[r.Host]; ignore {
+	if ph.IgnoredDomains.Contains(r.Host) {
 		w.WriteHeader(resp.StatusCode)
 		io.Copy(w, resp.Body)
 		return
