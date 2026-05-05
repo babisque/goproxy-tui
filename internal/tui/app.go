@@ -44,6 +44,7 @@ type App struct {
 	inputMode   bool
 	inputTarget string
 	filterQuery string
+	showConfig  bool
 }
 
 type logMsg proxy.RequestLog
@@ -157,6 +158,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.inputMode, a.inputTarget, a.input.Placeholder = true, "filter", "Search URL..."
 		case "r":
 			a.inputMode, a.inputTarget, a.input.Placeholder = true, "remove", "Domain to remove..."
+		case "c":
+			a.requests = nil
+			a.cursor, a.listOffset = 0, 0
+			a.detailsView.SetContent("(Empty)")
+			return a, nil
+		case "v":
+			a.showConfig = !a.showConfig
 		}
 
 		if a.focusLeft {
@@ -229,6 +237,63 @@ func (a *App) handleCommand(val string) {
 }
 
 func (a App) View() string {
+	if a.showConfig {
+		var b strings.Builder
+
+		titleStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Underline(true)
+		subStyle := lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
+
+		b.WriteString(titleStyle.Render("GOPROXY RULES & CONFIGURATION") + "\n\n")
+
+		b.WriteString(subStyle.Render("Blocked Domains (403 Forbidden):") + "\n")
+		blocked := a.proxy.BlockedDomains.ToSlice()
+		if len(blocked) == 0 {
+			b.WriteString("  (None)\n")
+		}
+		for _, d := range blocked {
+			b.WriteString("  - " + d + "\n")
+		}
+		b.WriteString("\n")
+
+		b.WriteString(subStyle.Render("Ignored Domains (Bypass MITM):") + "\n")
+		ignored := a.proxy.IgnoredDomains.ToSlice()
+		if len(ignored) == 0 {
+			b.WriteString("  (None)\n")
+		}
+		for _, d := range ignored {
+			b.WriteString("  - " + d + "\n")
+		}
+		b.WriteString("\n")
+
+		b.WriteString(subStyle.Render("Intercepted Headers:") + "\n")
+		if len(a.proxy.InterceptRules) == 0 {
+			b.WriteString("  (None)\n")
+		}
+		for _, r := range a.proxy.InterceptRules {
+			for k, v := range r.Headers {
+				b.WriteString(fmt.Sprintf("  - %s -> Injects [%s: %s]\n", r.Host, k, v))
+			}
+		}
+		b.WriteString("\n")
+
+		b.WriteString(subStyle.Render("Response Modifiers:") + "\n")
+		if len(a.proxy.ResponseRules) == 0 {
+			b.WriteString("  (None)\n")
+		}
+		for _, r := range a.proxy.ResponseRules {
+			b.WriteString(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText))
+		}
+
+		help := lipgloss.NewStyle().Foreground(colorGray).Render("\n\nv, esc: close config and return to proxy")
+
+		configBox := activeBoxStyle.Copy().
+			Width(a.width - 4).
+			Height(a.height - 4).
+			Render(b.String() + help)
+
+		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, configBox)
+	}
+
 	if a.width == 0 {
 		return "Loading..."
 	}
