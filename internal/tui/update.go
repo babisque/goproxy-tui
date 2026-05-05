@@ -100,6 +100,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case "v":
 			a.showConfig = !a.showConfig
+		case "M":
+			a.inputMode = true
+			a.inputTarget = "modify_req"
+			a.input.Focus()
 		}
 
 		if a.focusLeft {
@@ -168,5 +172,18 @@ func (a *App) handleCommand(val string) {
 				})
 			}
 		}
+	case "modify_req":
+		parts := strings.Split(val, ",")
+		if len(parts) == 2 {
+			tp := strings.Split(parts[1], ":")
+			if len(tp) == 2 {
+				a.proxy.AddRequestRule(proxy.RequestRule{
+					Host:    strings.TrimSpace(parts[0]),
+					OldText: strings.TrimSpace(tp[0]),
+					NewText: strings.TrimSpace(tp[1]),
+				})
+			}
+		}
+
 	}
 }

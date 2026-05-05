@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -24,6 +25,7 @@ type ProxyHandler struct {
 	BlockedDomains *DomainList
 	InterceptRules []InterceptRule
 	ResponseRules  []ResponseRule
+	RequestRules   []RequestRule
 	configFile     string
 	CACert         *x509.Certificate
 	CAKey          *rsa.PrivateKey
@@ -74,6 +76,20 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	r.Header.Del("Accept-Encoding")
+
+	if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
+		if r.Body != nil {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			r.Body.Close()
+
+			newBody := ph.applyRequestInterception(r.Host, bodyBytes)
+
+			r.Body = io.NopCloser(bytes.NewReader(newBody))
+
+			r.ContentLength = int64(len(newBody))
+			r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
+		}
+	}
 
 	resp, err := http.DefaultTransport.RoundTrip(r)
 	if err != nil {

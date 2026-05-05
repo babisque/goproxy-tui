@@ -18,6 +18,7 @@ type ConfigData struct {
 	Ignored        []string        `json:"ignored_domains"`
 	InterceptRules []InterceptRule `json:"intercept_rules"`
 	ResponseRules  []ResponseRule  `json:"response_rules"`
+	RequestRules   []RequestRule   `json:"request_rules"`
 }
 
 type InterceptRule struct {
@@ -26,6 +27,12 @@ type InterceptRule struct {
 }
 
 type ResponseRule struct {
+	Host    string
+	OldText string
+	NewText string
+}
+
+type RequestRule struct {
 	Host    string
 	OldText string
 	NewText string
@@ -85,6 +92,7 @@ func (ph *ProxyHandler) LoadConfig() {
 	}
 	ph.InterceptRules = config.InterceptRules
 	ph.ResponseRules = config.ResponseRules
+	ph.RequestRules = config.RequestRules
 }
 
 func (ph *ProxyHandler) SaveConfig() {
@@ -93,6 +101,7 @@ func (ph *ProxyHandler) SaveConfig() {
 		Ignored:        ph.IgnoredDomains.ToSlice(),
 		InterceptRules: ph.InterceptRules,
 		ResponseRules:  ph.ResponseRules,
+		RequestRules:   ph.RequestRules,
 	}
 
 	data, _ := json.MarshalIndent(config, "", "  ")
@@ -142,10 +151,33 @@ func (ph *ProxyHandler) AddResponseRule(rule ResponseRule) {
 	ph.SaveConfig()
 }
 
+func (ph *ProxyHandler) AddRequestRule(rule RequestRule) {
+	ph.RequestRules = append(ph.RequestRules, rule)
+	ph.SaveConfig()
+}
+
+func (ph *ProxyHandler) RemoveResponseRule(index int) {
+	if index >= 0 && index < len(ph.ResponseRules) {
+		ph.ResponseRules = append(ph.ResponseRules[:index], ph.ResponseRules[index+1:]...)
+		ph.SaveConfig()
+	}
+}
+
 func (ph *ProxyHandler) applyResponseInterception(host string, body []byte) []byte {
 	cleanHost := strings.Split(host, ":")[0]
 
 	for _, rule := range ph.ResponseRules {
+		if rule.Host == cleanHost {
+			body = bytes.ReplaceAll(body, []byte(rule.OldText), []byte(rule.NewText))
+		}
+	}
+	return body
+}
+
+func (ph *ProxyHandler) applyRequestInterception(host string, body []byte) []byte {
+	cleanHost := strings.Split(host, ":")[0]
+
+	for _, rule := range ph.RequestRules {
 		if rule.Host == cleanHost {
 			body = bytes.ReplaceAll(body, []byte(rule.OldText), []byte(rule.NewText))
 		}
