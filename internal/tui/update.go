@@ -109,6 +109,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.input.Focus()
 		case "d":
 			a.infoMsg = a.exportCurrentRequest()
+		case "R":
+			filtered := a.FilteredRequests()
+			if len(filtered) > 0 && a.cursor < len(filtered) {
+				reqToReplay := filtered[a.cursor]
+				a.infoMsg = "Replaying request..."
+				go a.proxy.ReplayRequest(reqToReplay)
+			}
 		}
 
 		if a.focusLeft {
