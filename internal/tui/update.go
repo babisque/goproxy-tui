@@ -44,6 +44,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.detailsView.Height = boxHeight - 6
 
 	case tea.KeyMsg:
+		if msg.String() != "d" {
+			a.infoMsg = ""
+		}
 		if a.inputMode {
 			switch msg.String() {
 			case "enter":
@@ -104,6 +107,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.inputMode = true
 			a.inputTarget = "modify_req"
 			a.input.Focus()
+		case "d":
+			a.infoMsg = a.exportCurrentRequest()
 		}
 
 		if a.focusLeft {

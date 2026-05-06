@@ -41,6 +41,7 @@ type App struct {
 	inputTarget string
 	filterQuery string
 	showConfig  bool
+	infoMsg     string
 }
 
 type logMsg proxy.RequestLog

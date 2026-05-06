@@ -51,6 +51,15 @@ func (a App) View() string {
 		}
 		b.WriteString("\n")
 
+		b.WriteString(subStyle.Render("Request Modifiers (POST/PUT/PATCH):") + "\n")
+		if len(a.proxy.RequestRules) == 0 {
+			b.WriteString("  (None)\n")
+		}
+		for _, r := range a.proxy.RequestRules {
+			b.WriteString(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText))
+		}
+		b.WriteString("\n")
+
 		b.WriteString(subStyle.Render("Response Modifiers:") + "\n")
 		if len(a.proxy.ResponseRules) == 0 {
 			b.WriteString("  (None)\n")
@@ -142,14 +151,21 @@ func (a App) View() string {
 		rightStyle.Render("Request details\n\n"+a.detailsView.View()),
 	)
 
-	help := lipgloss.NewStyle().Foreground(colorGray).Render("q: quit • esc: clear • j/k: nav • tab: swap • b/i/r: rules • n/m: intercept/modify • /: search")
+	helpText := "q: quit • c: clear • j/k: nav • tab: swap • d: dump • b/i/r: rules • M/m: modify • /: search"
+	var footer string
 
-	finalView := lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+help)
+	if a.infoMsg != "" {
+		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true).Render("\n" + a.infoMsg)
+	} else {
+		footer = lipgloss.NewStyle().Foreground(colorGray).Render("\n" + helpText)
+	}
+
+	finalView := lipgloss.JoinVertical(lipgloss.Left, ui, footer)
 
 	if a.inputMode {
 		prompt := lipgloss.NewStyle().Background(colorAccent).Foreground(colorWhite).Padding(0, 1).Render(strings.ToUpper(a.inputTarget) + ":")
 		inputView := lipgloss.JoinHorizontal(lipgloss.Left, prompt, " ", a.input.View())
-		finalView = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputView, "\n"+help)
+		finalView = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputView, footer)
 	}
 
 	return finalView
