@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -64,6 +65,11 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Method: r.Method, URL: r.Host + r.URL.Path,
 			Status: http.StatusForbidden, Body: "Blocked by proxy rules",
 		}
+		return
+	}
+
+	if strings.ToLower(r.Header.Get("Upgrade")) == "websocket" {
+		ph.handleWebSocket(w, r)
 		return
 	}
 
@@ -129,5 +135,92 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Method: r.Method, URL: r.Host + r.URL.Path,
 		Status: resp.StatusCode, Headers: resp.Header.Clone(),
 		Body: string(newBody),
+	}
+}
+
+func (ph *ProxyHandler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		ph.LogChannel <- RequestLog{
+			Method: "WSS", URL: r.Host,
+			Status: 500, Body: "[ERROR] ResponseWriter does not support Hijack interface!",
+		}
+		return
+	}
+
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		ph.LogChannel <- RequestLog{Method: "WSS", URL: r.Host, Status: 500, Body: "[ERROR] Failed to extract client socket: " + err.Error()}
+		return
+	}
+	defer clientConn.Close()
+
+	targetURL := r.URL.Host
+	if targetURL == "" {
+		targetURL = r.Host
+	}
+	cleanHost := strings.Split(targetURL, ":")[0]
+	if !strings.Contains(targetURL, ":") {
+		targetURL += ":443"
+	}
+
+	targetConn, err := tls.Dial("tcp", targetURL, &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         cleanHost,
+		NextProtos:         []string{"http/1.1"},
+	})
+	if err != nil {
+		clientConn.Write([]byte("HTTP/1.1 502 Bad Gateway\r\n\r\n"))
+		ph.LogChannel <- RequestLog{Method: "WSS", URL: targetURL, Status: 502, Body: "[ERROR] TLS Dial failed: " + err.Error()}
+		return
+	}
+	defer targetConn.Close()
+
+	path := r.URL.Path
+	if r.URL.RawQuery != "" {
+		path += "?" + r.URL.RawQuery
+	}
+	if path == "" {
+		path = "/"
+	}
+
+	var reqBuilder strings.Builder
+	reqBuilder.WriteString(fmt.Sprintf("%s %s HTTP/1.1\r\n", r.Method, path))
+	reqBuilder.WriteString(fmt.Sprintf("Host: %s\r\n", cleanHost))
+	for k, vv := range r.Header {
+		if strings.ToLower(k) == "host" {
+			continue
+		}
+		for _, v := range vv {
+			reqBuilder.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+		}
+	}
+	reqBuilder.WriteString("\r\n")
+
+	_, err = targetConn.Write([]byte(reqBuilder.String()))
+	if err != nil {
+		ph.LogChannel <- RequestLog{Method: "WSS", URL: targetURL, Status: 500, Body: "[ERROR] Failed to send raw bytes."}
+		return
+	}
+
+	ph.LogChannel <- RequestLog{
+		Method: "WSS", URL: r.Host + r.URL.Path,
+		Status: 101, Body: "Tunnel established and active.",
+	}
+
+	errc := make(chan error, 2)
+	cp := func(dst io.Writer, src io.Reader) {
+		_, err := io.Copy(dst, src)
+		errc <- err
+	}
+
+	go cp(targetConn, clientConn)
+	go cp(clientConn, targetConn)
+
+	<-errc
+
+	ph.LogChannel <- RequestLog{
+		Method: "WSS", URL: r.Host + r.URL.Path,
+		Status: 101, Body: "WebSocket tunnel ended.",
 	}
 }

@@ -41,6 +41,11 @@ func (m *mitmResponseWriter) WriteHeader(status int) {
 	m.conn.Write([]byte("\r\n"))
 }
 
+func (m *mitmResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	rw := bufio.NewReadWriter(bufio.NewReader(m.conn), bufio.NewWriter(m.conn))
+	return m.conn, rw, nil
+}
+
 func (ph *ProxyHandler) getCertificate(host string) (*tls.Certificate, error) {
 	host = strings.Split(host, ":")[0]
 
@@ -112,7 +117,10 @@ func (ph *ProxyHandler) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{*cert}}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{*cert},
+		NextProtos:   []string{"http/1.1"},
+	}
 	tlsClientConn := tls.Server(clientConn, tlsConfig)
 	if err := tlsClientConn.Handshake(); err != nil {
 		return
