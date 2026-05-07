@@ -10,12 +10,12 @@ import (
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	boxHeight := a.height - 8
+	boxHeight := a.height - 4
 	if a.inputMode {
 		boxHeight -= 3
 	}
 
-	visibleHeight := boxHeight - 6
+	visibleHeight := boxHeight - 5
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
@@ -40,8 +40,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
+
+		newBoxHeight := msg.Height - 4
+		if a.inputMode {
+			newBoxHeight -= 3
+		}
+
 		a.detailsView.Width = rightWidth - 4
-		a.detailsView.Height = boxHeight - 6
+		a.detailsView.Height = newBoxHeight - 5
 
 	case tea.KeyMsg:
 		if msg.String() != "d" {

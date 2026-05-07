@@ -11,19 +11,30 @@ import (
 )
 
 var (
-	colorGray   = lipgloss.Color("#555555")
-	colorWhite  = lipgloss.Color("#FFFFFF")
-	colorAccent = lipgloss.Color("#7D56F4")
+	colorDarkGray  = lipgloss.Color("#333333")
+	colorLightGray = lipgloss.Color("#A0A0A0")
+	colorWhite     = lipgloss.Color("#FFFFFF")
+	colorBlack     = lipgloss.Color("#000000")
 
 	inactiveBoxStyle = lipgloss.NewStyle().
 				Border(lipgloss.NormalBorder(), true).
-				BorderForeground(colorGray).
-				Padding(1, 2)
+				BorderForeground(colorDarkGray).
+				Padding(0, 1)
 
 	activeBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder(), true).
-			BorderForeground(colorAccent).
-			Padding(1, 2)
+			BorderForeground(colorWhite).
+			Padding(0, 1)
+
+	titleStyle = lipgloss.NewStyle().
+			Foreground(colorWhite).
+			Bold(true).
+			Underline(true)
+
+	selectedItemStyle = lipgloss.NewStyle().
+				Background(colorWhite).
+				Foreground(colorBlack).
+				Bold(true)
 )
 
 type App struct {

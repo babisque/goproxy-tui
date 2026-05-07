@@ -15,60 +15,60 @@ func (a App) View() string {
 	if a.showConfig {
 		var b strings.Builder
 
-		titleStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Underline(true)
+		configTitleStyle := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Underline(true)
 		subStyle := lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
 
-		b.WriteString(titleStyle.Render("GOPROXY RULES & CONFIGURATION") + "\n\n")
+		b.WriteString(configTitleStyle.Render("GOPROXY RULES & CONFIGURATION") + "\n\n")
 
 		b.WriteString(subStyle.Render("Blocked Domains (403 Forbidden):") + "\n")
 		blocked := a.proxy.BlockedDomains.ToSlice()
 		if len(blocked) == 0 {
-			b.WriteString("  (None)\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  (None)\n"))
 		}
 		for _, d := range blocked {
-			b.WriteString("  - " + d + "\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  - " + d + "\n"))
 		}
 		b.WriteString("\n")
 
 		b.WriteString(subStyle.Render("Ignored Domains (Bypass MITM):") + "\n")
 		ignored := a.proxy.IgnoredDomains.ToSlice()
 		if len(ignored) == 0 {
-			b.WriteString("  (None)\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  (None)\n"))
 		}
 		for _, d := range ignored {
-			b.WriteString("  - " + d + "\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  - " + d + "\n"))
 		}
 		b.WriteString("\n")
 
 		b.WriteString(subStyle.Render("Intercepted Headers:") + "\n")
 		if len(a.proxy.InterceptRules) == 0 {
-			b.WriteString("  (None)\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  (None)\n"))
 		}
 		for _, r := range a.proxy.InterceptRules {
 			for k, v := range r.Headers {
-				b.WriteString(fmt.Sprintf("  - %s -> Injects [%s: %s]\n", r.Host, k, v))
+				b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render(fmt.Sprintf("  - %s -> Injects [%s: %s]\n", r.Host, k, v)))
 			}
 		}
 		b.WriteString("\n")
 
 		b.WriteString(subStyle.Render("Request Modifiers (POST/PUT/PATCH):") + "\n")
 		if len(a.proxy.RequestRules) == 0 {
-			b.WriteString("  (None)\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  (None)\n"))
 		}
 		for _, r := range a.proxy.RequestRules {
-			b.WriteString(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText)))
 		}
 		b.WriteString("\n")
 
 		b.WriteString(subStyle.Render("Response Modifiers:") + "\n")
 		if len(a.proxy.ResponseRules) == 0 {
-			b.WriteString("  (None)\n")
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("  (None)\n"))
 		}
 		for _, r := range a.proxy.ResponseRules {
-			b.WriteString(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText))
+			b.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render(fmt.Sprintf("  - %s: Replaces '%s' with '%s'\n", r.Host, r.OldText, r.NewText)))
 		}
 
-		help := lipgloss.NewStyle().Foreground(colorGray).Render("\n\nv, esc: close config and return to proxy")
+		help := lipgloss.NewStyle().Foreground(colorDarkGray).Render("\n\nv, esc: close config and return to proxy")
 
 		configBox := activeBoxStyle.Copy().
 			Width(a.width - 4).
@@ -82,11 +82,11 @@ func (a App) View() string {
 		return "Loading..."
 	}
 
-	boxHeight := a.height - 8
+	boxHeight := a.height - 4
 	if a.inputMode {
 		boxHeight -= 3
 	}
-	visibleHeight := boxHeight - 6
+	visibleHeight := boxHeight - 5
 	if visibleHeight < 1 {
 		visibleHeight = 1
 	}
@@ -96,14 +96,15 @@ func (a App) View() string {
 	rightWidth := a.width - leftWidth - 6
 
 	var listBuilder strings.Builder
-	title := lipgloss.NewStyle().Bold(true).Underline(true).Render("Requests list")
+
+	headerTitle := " REQUESTS LIST "
 	if a.filterQuery != "" {
-		title = lipgloss.NewStyle().Bold(true).Underline(true).Render(fmt.Sprintf("Search: %s", a.filterQuery))
+		headerTitle = fmt.Sprintf(" SEARCH: %s ", a.filterQuery)
 	}
-	listBuilder.WriteString(title + "\n\n")
+	listBuilder.WriteString(titleStyle.Render(headerTitle) + "\n\n")
 
 	if len(filtered) == 0 {
-		listBuilder.WriteString("(Empty)")
+		listBuilder.WriteString(lipgloss.NewStyle().Foreground(colorLightGray).Render("(Empty)"))
 	} else {
 		endIndex := a.listOffset + visibleHeight
 		if endIndex > len(filtered) {
@@ -122,15 +123,11 @@ func (a App) View() string {
 			}
 
 			if i == a.cursor {
-				listBuilder.WriteString(lipgloss.NewStyle().
-					Foreground(colorWhite).
-					Background(colorAccent).
-					Width(leftWidth-4).
-					Render("> "+lineText) + "\n")
+				paddedLine := fmt.Sprintf(" %-*s ", leftWidth-4, lineText)
+				listBuilder.WriteString(selectedItemStyle.Render(paddedLine) + "\n")
 			} else {
 				listBuilder.WriteString(lipgloss.NewStyle().
-					Foreground(colorGray).
-					Width(leftWidth-4).
+					Foreground(colorLightGray).
 					Render("  "+lineText) + "\n")
 			}
 		}
@@ -146,24 +143,26 @@ func (a App) View() string {
 		rightStyle = activeBoxStyle.Copy().Width(rightWidth).Height(boxHeight)
 	}
 
+	leftContent := strings.TrimRight(listBuilder.String(), "\n")
+
 	ui := lipgloss.JoinHorizontal(lipgloss.Top,
-		leftStyle.Render(listBuilder.String()),
-		rightStyle.Render("Request details\n\n"+a.detailsView.View()),
+		leftStyle.Render(leftContent),
+		rightStyle.Render(titleStyle.Render(" INSPECTOR ")+"\n\n"+a.detailsView.View()),
 	)
 
 	helpText := "q: quit • c: clear • j/k: nav • tab: swap • d: dump • b/i/r: rules • M/m: modify • /: search"
 	var footer string
 
 	if a.infoMsg != "" {
-		footer = lipgloss.NewStyle().Foreground(lipgloss.Color("#04B575")).Bold(true).Render("\n" + a.infoMsg)
+		footer = "\n" + selectedItemStyle.Render(fmt.Sprintf(" %s ", a.infoMsg))
 	} else {
-		footer = lipgloss.NewStyle().Foreground(colorGray).Render("\n" + helpText)
+		footer = lipgloss.NewStyle().Foreground(colorDarkGray).Render("\n" + helpText)
 	}
 
 	finalView := lipgloss.JoinVertical(lipgloss.Left, ui, footer)
 
 	if a.inputMode {
-		prompt := lipgloss.NewStyle().Background(colorAccent).Foreground(colorWhite).Padding(0, 1).Render(strings.ToUpper(a.inputTarget) + ":")
+		prompt := selectedItemStyle.Render(" " + strings.ToUpper(a.inputTarget) + " ")
 		inputView := lipgloss.JoinHorizontal(lipgloss.Left, prompt, " ", a.input.View())
 		finalView = lipgloss.JoinVertical(lipgloss.Left, ui, "\n"+inputView, footer)
 	}
@@ -173,27 +172,28 @@ func (a App) View() string {
 
 func buildDetails(req proxy.RequestLog, width int) string {
 	var b strings.Builder
-	labelStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	labelStyle := lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(colorLightGray)
 
-	b.WriteString(labelStyle.Render("METHOD: ") + req.Method + "\n")
-	b.WriteString(labelStyle.Render("URL:    ") + req.URL + "\n")
-	b.WriteString(labelStyle.Render("STATUS: ") + fmt.Sprint(req.Status) + "\n\n")
+	b.WriteString(labelStyle.Render("METHOD: ") + valueStyle.Render(req.Method) + "\n")
+	b.WriteString(labelStyle.Render("URL:    ") + valueStyle.Render(req.URL) + "\n")
+	b.WriteString(labelStyle.Render("STATUS: ") + valueStyle.Render(fmt.Sprint(req.Status)) + "\n\n")
 
-	b.WriteString(lipgloss.NewStyle().Foreground(colorWhite).Underline(true).Render("HEADERS") + "\n")
+	b.WriteString(titleStyle.Render("HEADERS") + "\n")
 	keys := make([]string, 0, len(req.Headers))
 	for k := range req.Headers {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		b.WriteString(labelStyle.Render(k+": ") + strings.Join(req.Headers[k], ", ") + "\n")
+		b.WriteString(labelStyle.Render(k+": ") + valueStyle.Render(strings.Join(req.Headers[k], ", ")) + "\n")
 	}
 
-	b.WriteString("\n" + lipgloss.NewStyle().Foreground(colorWhite).Underline(true).Render("BODY") + "\n")
+	b.WriteString("\n" + titleStyle.Render("PAYLOAD") + "\n")
 
 	bodyText := req.Body
 	if bodyText == "" {
-		b.WriteString("(Empty)")
+		b.WriteString(valueStyle.Render("(Empty)"))
 		return b.String()
 	}
 
@@ -217,6 +217,7 @@ func buildDetails(req proxy.RequestLog, width int) string {
 
 	wrappedBody := lipgloss.NewStyle().
 		Width(width - 6).
+		Foreground(colorLightGray).
 		Render(bodyText)
 
 	b.WriteString(wrappedBody)
