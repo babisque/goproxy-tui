@@ -38,26 +38,34 @@ var (
 )
 
 type App struct {
-	width       int
-	height      int
-	logChannel  chan proxy.RequestLog
-	requests    []proxy.RequestLog
-	cursor      int
-	listOffset  int
-	detailsView viewport.Model
-	focusLeft   bool
-	proxy       *proxy.ProxyHandler
-	input       textinput.Model
-	inputMode   bool
-	inputTarget string
-	filterQuery string
-	showConfig  bool
-	infoMsg     string
+	width          int
+	height         int
+	logChannel     chan proxy.RequestLog
+	requests       []proxy.RequestLog
+	cursor         int
+	listOffset     int
+	detailsView    viewport.Model
+	focusLeft      bool
+	proxy          *proxy.ProxyHandler
+	input          textinput.Model
+	inputMode      bool
+	inputTarget    string
+	filterQuery    string
+	showConfig     bool
+	infoMsg        string
+	interceptChan  chan proxy.InterceptRequest
+	isIntercepting bool
+	pendingReq     *proxy.InterceptRequest
 }
 
 type logMsg proxy.RequestLog
+type interceptMsg proxy.InterceptRequest
 
-func NewApp(ph *proxy.ProxyHandler) App {
+func waitForIntercept(ch chan proxy.InterceptRequest) tea.Cmd {
+	return func() tea.Msg { return interceptMsg(<-ch) }
+}
+
+func NewApp(ph *proxy.ProxyHandler, intCh chan proxy.InterceptRequest) App {
 	vp := viewport.New(0, 0)
 	vp.SetContent("(Empty)")
 
@@ -67,17 +75,21 @@ func NewApp(ph *proxy.ProxyHandler) App {
 	ti.Width = 60
 
 	return App{
-		logChannel:  ph.LogChannel,
-		detailsView: vp,
-		focusLeft:   true,
-		proxy:       ph,
-		input:       ti,
-		inputMode:   false,
+		logChannel:    ph.LogChannel,
+		interceptChan: intCh,
+		detailsView:   vp,
+		focusLeft:     true,
+		proxy:         ph,
+		input:         ti,
+		inputMode:     false,
 	}
 }
 
 func (a App) Init() tea.Cmd {
-	return waitForLog(a.logChannel)
+	return tea.Batch(
+		waitForLog(a.logChannel),
+		waitForIntercept(a.interceptChan),
+	)
 }
 
 func (a App) FilteredRequests() []proxy.RequestLog {

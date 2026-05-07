@@ -150,13 +150,20 @@ func (a App) View() string {
 		rightStyle.Render(titleStyle.Render(" INSPECTOR ")+"\n\n"+a.detailsView.View()),
 	)
 
-	helpText := "q: quit • c: clear • j/k: nav • tab: swap • d: dump • b/i/r: rules • M/m: modify • /: search"
+	helpText := "q: quit • I: intercept • j/k: nav • tab: swap • a: accept • d: drop • /: search"
 	var footer string
 
-	if a.infoMsg != "" {
-		footer = "\n" + selectedItemStyle.Render(fmt.Sprintf(" %s ", a.infoMsg))
+	alertStyle := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(colorWhite).Bold(true).Padding(0, 1)
+	onStyle := lipgloss.NewStyle().Background(lipgloss.Color("#550000")).Foreground(colorWhite).Bold(true).Padding(0, 1)
+
+	if a.pendingReq != nil {
+		footer = "\n " + alertStyle.Render(" INTERCEPTED REQUEST ") + " " + lipgloss.NewStyle().Foreground(colorDarkGray).Render(helpText)
+	} else if a.isIntercepting {
+		footer = "\n " + onStyle.Render(" INTECEPTOR ON ") + " " + lipgloss.NewStyle().Foreground(colorDarkGray).Render(helpText)
+	} else if a.infoMsg != "" {
+		footer = "\n " + selectedItemStyle.Render(fmt.Sprintf(" %s ", a.infoMsg))
 	} else {
-		footer = lipgloss.NewStyle().Foreground(colorDarkGray).Render("\n" + helpText)
+		footer = lipgloss.NewStyle().Foreground(colorDarkGray).Render("\n " + helpText)
 	}
 
 	finalView := lipgloss.JoinVertical(lipgloss.Left, ui, footer)

@@ -24,6 +24,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	rightWidth := a.width - leftWidth - 6
 
 	switch msg := msg.(type) {
+	case interceptMsg:
+		req := proxy.InterceptRequest(msg)
+		a.pendingReq = &req
+
+		a.detailsView.SetContent(buildDetails(req.Log, rightWidth))
+		a.detailsView.GotoTop()
+
+		return a, waitForIntercept(a.interceptChan)
 	case logMsg:
 		a.requests = append(a.requests, proxy.RequestLog(msg))
 		filtered := a.FilteredRequests()
@@ -53,6 +61,22 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() != "d" {
 			a.infoMsg = ""
 		}
+		if a.pendingReq != nil && !a.inputMode {
+			switch msg.String() {
+			case "a":
+				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: true}
+				a.pendingReq = nil
+				a.infoMsg = "Request allowed"
+				return a, nil
+			case "d":
+				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: false}
+				a.pendingReq = nil
+				a.infoMsg = "Request dropped"
+				return a, nil
+			}
+
+			return a, nil
+		}
 		if a.inputMode {
 			switch msg.String() {
 			case "enter":
@@ -76,6 +100,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return a, tea.Quit
+		case "I":
+			a.isIntercepting = a.proxy.ToggleIntercept()
+			if a.isIntercepting {
+				a.infoMsg = "Intercept mode enabled: new requests will be paused for review."
+			} else {
+				a.infoMsg = "Intercept mode disabled: new requests will flow without interruption."
+				if a.pendingReq != nil {
+					a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: true}
+					a.pendingReq = nil
+				}
+			}
+			return a, nil
 		case "esc":
 			a.filterQuery = ""
 			a.cursor = 0

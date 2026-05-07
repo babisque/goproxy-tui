@@ -31,7 +31,7 @@ func main() {
 		}
 	}()
 
-	app := tui.NewApp(proxyHandler)
+	app := tui.NewApp(proxyHandler, intercepChan)
 
 	if _, err := tea.NewProgram(app, tea.WithAltScreen()).Run(); err != nil {
 		log.Fatal("Error running TUI:", err)
