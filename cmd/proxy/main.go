@@ -20,8 +20,9 @@ func main() {
 		log.Fatal("Error loading/creating CA:", err)
 	}
 
+	intercepChan := make(chan proxy.InterceptRequest)
 	configPath := filepath.Join(storagePath, "config.json")
-	proxyHandler := proxy.NewProxyHandler(logChan, configPath, caCert, caKey)
+	proxyHandler := proxy.NewProxyHandler(logChan, intercepChan, configPath, caCert, caKey)
 
 	go func() {
 		err := http.ListenAndServe(":8080", proxyHandler)

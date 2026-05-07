@@ -20,8 +20,21 @@ type RequestLog struct {
 	Body    string
 }
 
+type InterceptAction struct {
+	Allow bool
+}
+
+type InterceptRequest struct {
+	Log      RequestLog
+	ActionCh chan InterceptAction
+}
+
 type ProxyHandler struct {
-	LogChannel     chan RequestLog
+	LogChannel    chan RequestLog
+	InterceptChan chan InterceptRequest
+	InterceptMode bool
+	InterceptMu   sync.RWMutex
+
 	IgnoredDomains *DomainList
 	BlockedDomains *DomainList
 	InterceptRules []InterceptRule
@@ -34,9 +47,10 @@ type ProxyHandler struct {
 	certMu         sync.RWMutex
 }
 
-func NewProxyHandler(ch chan RequestLog, configPath string, caCert *x509.Certificate, caKey *rsa.PrivateKey) *ProxyHandler {
+func NewProxyHandler(ch chan RequestLog, interceptCh chan InterceptRequest, configPath string, caCert *x509.Certificate, caKey *rsa.PrivateKey) *ProxyHandler {
 	ph := &ProxyHandler{
 		LogChannel:     ch,
+		InterceptChan:  interceptCh,
 		IgnoredDomains: NewDomainList(),
 		BlockedDomains: NewDomainList(),
 		InterceptRules: []InterceptRule{},
@@ -94,6 +108,36 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 			r.ContentLength = int64(len(newBody))
 			r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
+		}
+	}
+
+	ph.InterceptMu.RLock()
+	isIntercepting := ph.InterceptMode
+	ph.InterceptMu.RUnlock()
+
+	if isIntercepting && r.Method != http.MethodConnect {
+		actionCh := make(chan InterceptAction)
+
+		ph.InterceptChan <- InterceptRequest{
+			Log: RequestLog{
+				Method:  r.Method,
+				URL:     r.Host + r.URL.Path,
+				Status:  0,
+				Headers: r.Header.Clone(),
+				Body:    "[INTERCEPTED] Request is paused for review.",
+			},
+			ActionCh: actionCh,
+		}
+
+		action := <-actionCh
+
+		if !action.Allow {
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte("Request dropped by interceptor"))
+			ph.LogChannel <- RequestLog{
+				Method: r.Method, URL: r.Host + r.URL.Path, Status: 403, Body: "DROPPED",
+			}
+			return
 		}
 	}
 
@@ -223,4 +267,11 @@ func (ph *ProxyHandler) handleWebSocket(w http.ResponseWriter, r *http.Request) 
 		Method: "WSS", URL: r.Host + r.URL.Path,
 		Status: 101, Body: "WebSocket tunnel ended.",
 	}
+}
+
+func (ph *ProxyHandler) ToggleIntercept() bool {
+	ph.InterceptMu.Lock()
+	defer ph.InterceptMu.Unlock()
+	ph.InterceptMode = !ph.InterceptMode
+	return ph.InterceptMode
 }
