@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/babisque/goproxy-tui/internal/proxy"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -56,6 +57,8 @@ type App struct {
 	interceptChan  chan proxy.InterceptRequest
 	isIntercepting bool
 	pendingReq     *proxy.InterceptRequest
+	editor         textarea.Model
+	editing        bool
 }
 
 type logMsg proxy.RequestLog
@@ -74,6 +77,12 @@ func NewApp(ph *proxy.ProxyHandler, intCh chan proxy.InterceptRequest) App {
 	ti.CharLimit = 156
 	ti.Width = 60
 
+	ta := textarea.New()
+	ta.Placeholder = "Edit request body here..."
+	ta.Focus()
+	ta.ShowLineNumbers = true
+	ta.CharLimit = 0
+
 	return App{
 		logChannel:    ph.LogChannel,
 		interceptChan: intCh,
@@ -82,6 +91,8 @@ func NewApp(ph *proxy.ProxyHandler, intCh chan proxy.InterceptRequest) App {
 		proxy:         ph,
 		input:         ti,
 		inputMode:     false,
+		editor:        ta,
+		editing:       false,
 	}
 }
 

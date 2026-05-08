@@ -21,7 +21,8 @@ type RequestLog struct {
 }
 
 type InterceptAction struct {
-	Allow bool
+	Allow        bool
+	ModifiedBody *string
 }
 
 type InterceptRequest struct {
@@ -138,6 +139,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Method: r.Method, URL: r.Host + r.URL.Path, Status: 403, Body: "DROPPED",
 			}
 			return
+		}
+
+		if action.ModifiedBody != nil {
+			newBody := []byte(*action.ModifiedBody)
+			r.Body = io.NopCloser(bytes.NewReader(newBody))
+			r.ContentLength = int64(len(newBody))
+			r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
 		}
 	}
 

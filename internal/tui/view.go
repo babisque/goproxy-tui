@@ -145,21 +145,30 @@ func (a App) View() string {
 
 	leftContent := strings.TrimRight(listBuilder.String(), "\n")
 
+	var rightContent string
+	if a.editing {
+		rightContent = rightStyle.Render(titleStyle.Render(" LIVE EDITOR ") + "\n\n" + a.editor.View())
+	} else {
+		rightContent = rightStyle.Render(titleStyle.Render(" INSPECTOR ") + "\n\n" + a.detailsView.View())
+	}
+
 	ui := lipgloss.JoinHorizontal(lipgloss.Top,
 		leftStyle.Render(leftContent),
-		rightStyle.Render(titleStyle.Render(" INSPECTOR ")+"\n\n"+a.detailsView.View()),
+		rightContent,
 	)
 
-	helpText := "q: quit • I: intercept • j/k: nav • tab: swap • a: accept • d: drop • /: search"
+	helpText := "q: quit • I: intercept • j/k: nav • tab: swap • a: accept • d: drop • e: edit • /: search"
 	var footer string
 
 	alertStyle := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(colorWhite).Bold(true).Padding(0, 1)
 	onStyle := lipgloss.NewStyle().Background(lipgloss.Color("#550000")).Foreground(colorWhite).Bold(true).Padding(0, 1)
 
-	if a.pendingReq != nil {
+	if a.pendingReq != nil && !a.editing {
 		footer = "\n " + alertStyle.Render(" INTERCEPTED REQUEST ") + " " + lipgloss.NewStyle().Foreground(colorDarkGray).Render(helpText)
+	} else if a.editing {
+		footer = "\n " + alertStyle.Render(" EDITING PAYLOAD [CTRL+S: SAVE | ESC: CANCEL] ")
 	} else if a.isIntercepting {
-		footer = "\n " + onStyle.Render(" INTECEPTOR ON ") + " " + lipgloss.NewStyle().Foreground(colorDarkGray).Render(helpText)
+		footer = "\n " + onStyle.Render(" INTERCEPTOR ON ") + " " + lipgloss.NewStyle().Foreground(colorDarkGray).Render(helpText)
 	} else if a.infoMsg != "" {
 		footer = "\n " + selectedItemStyle.Render(fmt.Sprintf(" %s ", a.infoMsg))
 	} else {

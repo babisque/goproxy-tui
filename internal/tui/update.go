@@ -56,27 +56,53 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		a.detailsView.Width = rightWidth - 4
 		a.detailsView.Height = newBoxHeight - 5
+		a.editor.SetWidth(rightWidth - 4)
+		a.editor.SetHeight(newBoxHeight - 5)
 
 	case tea.KeyMsg:
 		if msg.String() != "d" {
 			a.infoMsg = ""
 		}
-		if a.pendingReq != nil && !a.inputMode {
+
+		if a.editing {
 			switch msg.String() {
-			case "a":
-				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: true}
-				a.pendingReq = nil
-				a.infoMsg = "Request allowed"
+			case "esc":
+				a.editing = false
 				return a, nil
-			case "d":
-				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: false}
+			case "ctrl+s":
+				newBody := a.editor.Value()
+				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: true, ModifiedBody: &newBody}
 				a.pendingReq = nil
-				a.infoMsg = "Request dropped"
+				a.editing = false
+				a.infoMsg = "Payload modified and request released!"
 				return a, nil
 			}
 
+			var cmd tea.Cmd
+			a.editor, cmd = a.editor.Update(msg)
+			return a, cmd
+		}
+
+		if a.pendingReq != nil && !a.inputMode {
+			switch msg.String() {
+			case "a":
+				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: true, ModifiedBody: nil}
+				a.pendingReq = nil
+				a.infoMsg = "Original request allowed without modifications."
+				return a, nil
+			case "d":
+				a.pendingReq.ActionCh <- proxy.InterceptAction{Allow: false, ModifiedBody: nil}
+				a.pendingReq = nil
+				a.infoMsg = "Request dropped by interceptor!"
+				return a, nil
+			case "e":
+				a.editing = true
+				a.editor.SetValue(a.pendingReq.Log.Body)
+				return a, nil
+			}
 			return a, nil
 		}
+
 		if a.inputMode {
 			switch msg.String() {
 			case "enter":
