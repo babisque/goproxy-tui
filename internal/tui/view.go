@@ -157,7 +157,7 @@ func (a App) View() string {
 		rightContent,
 	)
 
-	helpText := "q: quit • I: intercept • j/k: nav • tab: swap • a: accept • d: drop • e: edit • /: search"
+	helpText := "I: intercept • e: edit • C: copy cURL • R: replay • F: flood (race test) • /: search • q: quit"
 	var footer string
 
 	alertStyle := lipgloss.NewStyle().Background(lipgloss.Color("#FF0000")).Foreground(colorWhite).Bold(true).Padding(0, 1)

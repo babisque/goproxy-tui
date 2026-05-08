@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/atotto/clipboard"
 )
 
 func (a *App) exportCurrentRequest() string {
@@ -36,4 +38,37 @@ func (a *App) exportCurrentRequest() string {
 	}
 
 	return fmt.Sprintf("Request exported to %s", fileName)
+}
+
+func (a *App) copyToCURL() string {
+	filtered := a.FilteredRequests()
+	if len(filtered) == 0 || a.cursor >= len(filtered) {
+		return "No request selected"
+	}
+
+	req := filtered[a.cursor]
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("curl -X %s \"%s\"", req.Method, req.URL))
+
+	for k, vv := range req.Headers {
+		if strings.ToLower(k) == "accept-encoding" {
+			continue
+		}
+		for _, v := range vv {
+			b.WriteString(fmt.Sprintf(" \\\n  -H \"%s: %s\"", k, strings.ReplaceAll(v, "\"", "\\\"")))
+		}
+	}
+
+	if req.Body != "" {
+		safeBody := strings.ReplaceAll(req.Body, "'", "'\\''")
+		b.WriteString(fmt.Sprintf(" \\\n  -d '%s'", safeBody))
+	}
+
+	err := clipboard.WriteAll(b.String())
+	if err != nil {
+		return fmt.Sprintf("Error copying to clipboard: %v", err)
+	}
+
+	return "Copied as cURL to Clipboard!"
 }

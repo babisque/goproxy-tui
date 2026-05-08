@@ -146,6 +146,18 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return a, nil
+		case "C":
+			a.infoMsg = a.copyToCURL()
+		case "F":
+			filtered := a.FilteredRequests()
+			if len(filtered) > 0 && a.cursor < len(filtered) {
+				reqToReplay := filtered[a.cursor]
+				a.infoMsg = "RACE CONDITION: firing 50 concurrent requests."
+
+				for i := 0; i < 50; i++ {
+					go a.proxy.ReplayRequest(reqToReplay)
+				}
+			}
 		case "esc":
 			a.filterQuery = ""
 			a.cursor = 0
