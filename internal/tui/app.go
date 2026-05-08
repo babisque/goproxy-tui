@@ -78,10 +78,17 @@ func NewApp(ph *proxy.ProxyHandler, intCh chan proxy.InterceptRequest) App {
 	ti.Width = 60
 
 	ta := textarea.New()
-	ta.Placeholder = "Edit request body here..."
+	ta.Placeholder = ""
 	ta.Focus()
 	ta.ShowLineNumbers = true
 	ta.CharLimit = 0
+
+	ta.Prompt = "  "
+	ta.FocusedStyle.CursorLine = lipgloss.NewStyle()
+	ta.FocusedStyle.LineNumber = lipgloss.NewStyle().Foreground(colorDarkGray)
+	ta.FocusedStyle.CursorLineNumber = lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
+	ta.FocusedStyle.Text = lipgloss.NewStyle().Foreground(colorLightGray)
+	ta.FocusedStyle.Base = lipgloss.NewStyle()
 
 	return App{
 		logChannel:    ph.LogChannel,

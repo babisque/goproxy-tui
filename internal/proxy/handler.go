@@ -117,6 +117,13 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.InterceptMu.RUnlock()
 
 	if isIntercepting && r.Method != http.MethodConnect {
+		var originalBody string
+		if r.Body != nil {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			originalBody = string(bodyBytes)
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+		}
+
 		actionCh := make(chan InterceptAction)
 
 		ph.InterceptChan <- InterceptRequest{
@@ -125,7 +132,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				URL:     r.Host + r.URL.Path,
 				Status:  0,
 				Headers: r.Header.Clone(),
-				Body:    "[INTERCEPTED] Request is paused for review.",
+				Body:    originalBody,
 			},
 			ActionCh: actionCh,
 		}
