@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"bytes"
+	"encoding/json"
 	"strings"
 
 	"github.com/babisque/goproxy-tui/internal/proxy"
@@ -97,7 +99,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return a, nil
 			case "e":
 				a.editing = true
-				a.editor.SetValue(a.pendingReq.Log.Body)
+
+				bodyText := a.pendingReq.Log.Body
+				var pretty bytes.Buffer
+				if err := json.Indent(&pretty, []byte(bodyText), "", " "); err == nil {
+					bodyText = pretty.String()
+				}
+				a.editor.SetValue(bodyText)
 				return a, nil
 			}
 			return a, nil
